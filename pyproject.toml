@@ -1,0 +1,135 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openjd-cli"
+dynamic = ["version"]
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+
+dependencies = [
+  "openjd-sessions >= 0.1.0"
+]
+
+
+[tool.hatch.build]
+artifacts = [
+  "*_version.py",
+]
+only-packages = true
+
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "post-release"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "_version.py"
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_version_hook.py"
+
+[[tool.hatch.build.hooks.custom.copy_map]]
+sources = [
+  "_version.py",
+]
+destinations = [
+  "src/openjd/cli",
+]
+
+[tool.hatch.build.targets.sdist]
+packages = [
+  "src/openjd",
+]
+only-include = [
+  "src/openjd",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+  "src/openjd",
+]
+only-include = [
+  "src/openjd",
+]
+
+[tool.mypy]
+check_untyped_defs = false
+show_error_codes = false
+pretty = true
+ignore_missing_imports = true
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+show_error_context = true
+strict_equality = false
+python_version = 3.9
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = false
+# Tell mypy that there's a namespace package at src/openjd
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+
+# See: https://docs.pydantic.dev/mypy_plugin/
+#  - Helps mypy understand pydantic typing.
+plugins = "pydantic.mypy"
+
+[tool.ruff]
+ignore = [
+  "E501",
+  # Double Check if this should be fixed
+  "E731",
+]
+line-length = 100
+
+
+[tool.ruff.pep8-naming]
+classmethod-decorators = [
+  "classmethod",
+  # pydantic decorators are classmethod decorators
+  # suppress N805 errors on classes decorated with them
+  "pydantic.validator",
+  "pydantic.root_validator",
+]
+
+[tool.ruff.isort]
+known-first-party = [
+  "openjd",
+]
+
+[tool.black]
+line-length = 100
+
+[tool.pytest.ini_options]
+xfail_strict = false
+addopts = [
+    "-rfEx",
+    "--durations=5",
+    "--cov=src/openjd/cli",
+    "--color=yes",
+    "--cov-report=html:build/coverage",
+    "--cov-report=xml:build/coverage/coverage.xml",
+    "--cov-report=term-missing",
+    "--numprocesses=auto",
+    "--timeout=30"
+]
+
+
+[tool.coverage.run]
+branch = true
+parallel = true
+
+
+[tool.coverage.paths]
+source = [
+  "src/"
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 94

@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_to_publish:
+        description: "Version to be release"
+        required: false
+
+jobs:
+  TestMainline:
+    name: Test Mainline
+    uses: ./.github/workflows/code_quality.yml
+    with:
+      branch: mainline
+    secrets: inherit
+
+  Merge:
+    needs: TestMainline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: release
+          fetch-depth: 0
+          token: ${{ secrets.CI_TOKEN }}
+      - name: Set Git config
+        run: |
+          git config --local user.email "client-software-ci@amazon.com"
+          git config --local user.name "client-software-ci"
+      - name: Update Release
+        run: git merge --ff-only origin/mainline -v
+      - name: Push new release
+        if: ${{ inputs.version_to_publish}}
+        run: |
+          git tag -a ${{ inputs.version_to_publish }} -m "Release ${{ inputs.version_to_publish }}"
+          git push origin release ${{ inputs.version_to_publish }}
+      - name: Push post release
+        if: ${{ !inputs.version_to_publish}}
+        run: git push origin release
+
+  TestRelease:
+    needs: Merge
+    name: Test Release
+    uses: ./.github/workflows/code_quality.yml
+    with:
+      branch: release
+    secrets: inherit
+
