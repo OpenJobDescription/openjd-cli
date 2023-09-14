@@ -13,6 +13,9 @@ dependencies = [
   "openjd-sessions == 0.1.*"
 ]
 
+[project.scripts]
+openjd = "openjd:__main__.main"
+
 
 [tool.hatch.build]
 artifacts = [
