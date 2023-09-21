@@ -10,8 +10,11 @@ license = "Apache-2.0"
 requires-python = ">=3.9"
 
 dependencies = [
-  "openjd-sessions >= 0.1.0"
+  "openjd-sessions == 0.1.*"
 ]
+
+[project.scripts]
+openjd = "openjd:__main__.main"
 
 
 [tool.hatch.build]
