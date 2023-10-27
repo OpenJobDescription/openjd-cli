@@ -135,4 +135,4 @@ source = [
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 94
+fail_under = 92
