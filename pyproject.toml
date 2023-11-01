@@ -52,6 +52,9 @@ only-include = [
   "src/openjd",
 ]
 
+[tool.hatch.build.targets.sdist.force-include]
+"src/openjd/__main__.py" = "openjd/__main__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = [
   "src/openjd",
@@ -59,6 +62,9 @@ packages = [
 only-include = [
   "src/openjd",
 ]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/openjd/__main__.py" = "openjd/__main__.py"
 
 [tool.mypy]
 check_untyped_defs = false
