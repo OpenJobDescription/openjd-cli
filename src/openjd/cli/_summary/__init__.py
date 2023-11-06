@@ -8,7 +8,7 @@ def populate_argparser(subcommands: SubparserGroup) -> None:
     """Adds the `summary` command's arguments to the given subcommand parser."""
     summary_parser = subcommands.add(
         "summary",
-        usage="openjd-cli summary JOB_TEMPLATE_PATH [arguments]",
+        usage="openjd summary JOB_TEMPLATE_PATH [arguments]",
         description="Print summary information about a Job Template.",
     )
 

@@ -9,7 +9,7 @@ def populate_argparser(subcommands: SubparserGroup) -> None:
     run_parser = subcommands.add(
         "run",
         description="Takes a Job Template and Step name, then runs Tasks from that Step.",
-        usage="openjd-cli-cli run JOB_TEMPLATE_PATH [arguments]",
+        usage="openjd run JOB_TEMPLATE_PATH [arguments]",
     )
     add_common_arguments(run_parser, {CommonArgument.PATH, CommonArgument.JOB_PARAMS})
     add_run_arguments(run_parser)

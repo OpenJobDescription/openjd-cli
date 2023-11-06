@@ -111,7 +111,7 @@ def generate_job(args: Namespace) -> Job:
 
 
 @dataclass
-class OpenJDCliResult:
+class OpenJDCliResult(BaseException):
     """
     Denotes the result of a command, including its status (success/error)
     and an accompanying message.

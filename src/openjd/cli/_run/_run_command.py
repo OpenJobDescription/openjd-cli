@@ -79,8 +79,8 @@ def add_run_arguments(run_parser: ArgumentParser):
         "--path-mapping-rules",
         action="store",
         type=str,
-        help="The path mapping rules to apply to the template. Should be a JSON list of Open Job Description path "
-        + "mapping rules.  Can either be supplied as a string or as a path to a JSON/YAML document, "
+        help="The path mapping rules to apply to the template. Should be a path mapping definition according to "
+        + "the 'pathmapping-1.0' schema. Can either be supplied as a string or as a path to a JSON/YAML document, "
         + "prefixed with 'file://'.",
     )
 
@@ -210,9 +210,20 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         if args.path_mapping_rules.startswith("file://"):
             filename = Path(args.path_mapping_rules.removeprefix("file://")).expanduser()
             with open(filename, encoding="utf8") as f:
-                rules_list = json.load(f)
+                parsed_rules = json.load(f)
         else:
-            rules_list = json.loads(args.path_mapping_rules)
+            parsed_rules = json.loads(args.path_mapping_rules)
+        if parsed_rules.get("version", None) != "pathmapping-1.0":
+            raise OpenJDCliResult(
+                status="error",
+                message="Path mapping rules must have a 'version' value of 'pathmapping-1.0'",
+            )
+        if not isinstance(parsed_rules.get("path_mapping_rules", None), list):
+            raise OpenJDCliResult(
+                status="error",
+                message="Path mapping rules must contain  a list named 'path_mapping_rules'",
+            )
+        rules_list = parsed_rules.get("path_mapping_rules")
         path_mapping_rules = [PathMappingRule.from_dict(rule) for rule in rules_list]
 
     # Map Step names to Step objects so they can be easily accessed

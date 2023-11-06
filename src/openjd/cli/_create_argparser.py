@@ -17,7 +17,7 @@ from ._schema import populate_argparser as populate_schema_subparser
 
 def create_argparser() -> ArgumentParser:
     """Generate the root argparser for the CLI"""
-    parser = ArgumentParser(prog="openjd-cli", usage="openjd-cli <command> [arguments]")
+    parser = ArgumentParser(prog="openjd", usage="openjd <command> [arguments]")
     parser.set_defaults(func=lambda _: parser.print_help())
     subcommands = SubparserGroup(
         parser,
