@@ -17,7 +17,7 @@ from openjd.cli._run._run_command import (
 )
 from openjd.cli._run._local_session._session_manager import LocalSession
 from openjd.model import Job
-from openjd.sessions import PathMappingRule, PathMappingOS, Session
+from openjd.sessions import PathMappingRule, PathFormat, Session
 
 
 @pytest.mark.parametrize(
@@ -93,9 +93,19 @@ def test_do_run_path_mapping_rules():
     """
     Test that the `run` command exits on any error (e.g., a non-existent template file).
     """
-    path_mapping_rules = [
+    path_mapping_rules = {
+        "version": "pathmapping-1.0",
+        "path_mapping_rules": [
+            {
+                "source_path_format": "WINDOWS",
+                "source_path": r"C:\test",
+                "destination_path": "/mnt/test",
+            }
+        ],
+    }
+    expected_path_mapping_rules = [
         PathMappingRule(
-            source_os=PathMappingOS.WINDOWS,
+            source_path_format=PathFormat.WINDOWS,
             source_path=PureWindowsPath(r"C:\test"),
             destination_path=PurePosixPath("/mnt/test"),
         )
@@ -107,7 +117,7 @@ def test_do_run_path_mapping_rules():
         with tempfile.NamedTemporaryFile(
             mode="w+t", suffix=".rules.json", encoding="utf8", delete=False
         ) as temp_rules:
-            json.dump([rule.to_dict() for rule in path_mapping_rules], temp_rules.file)
+            json.dump(path_mapping_rules, temp_rules.file)
 
         with tempfile.NamedTemporaryFile(
             mode="w+t", suffix=".template.json", encoding="utf8", delete=False
@@ -136,7 +146,7 @@ def test_do_run_path_mapping_rules():
                 step_map=ANY,
                 maximum_tasks=1,
                 task_parameter_values=ANY,
-                path_mapping_rules=path_mapping_rules,
+                path_mapping_rules=expected_path_mapping_rules,
                 should_run_dependencies=False,
                 should_print_logs=True,
             )
@@ -232,7 +242,7 @@ def test_run_local_session_success(
     """
     path_mapping_rules = [
         PathMappingRule(
-            source_os=PathMappingOS.WINDOWS,
+            source_path_format=PathFormat.WINDOWS,
             source_path=PureWindowsPath(r"C:\test"),
             destination_path=PurePosixPath("/mnt/test"),
         )

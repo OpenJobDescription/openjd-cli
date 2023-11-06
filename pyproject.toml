@@ -10,7 +10,7 @@ license = "Apache-2.0"
 requires-python = ">=3.9"
 
 dependencies = [
-  "openjd-sessions == 0.1.*"
+  "openjd-sessions == 0.2.*"
 ]
 
 [project.scripts]
