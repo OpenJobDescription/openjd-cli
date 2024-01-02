@@ -81,6 +81,10 @@ def test_cli_summary_success(mock_summary: Mock, mock_args: list):
             id="With multiple Job parameters",
         ),
         pytest.param(
+            ["some-template.json", "--step", "step1", "-p", "param=value1", "-p", "param2="],
+            id="With an empty string Job parameter value",
+        ),
+        pytest.param(
             [
                 "some-template.json",
                 "--step",
