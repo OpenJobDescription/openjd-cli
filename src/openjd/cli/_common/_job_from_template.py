@@ -75,7 +75,7 @@ def get_job_params(parameter_args: list[str]) -> dict:
 
         # Case 2: Provided argument is a Key=Value string
         else:
-            regex_match = re.match("(.+)=(.+)", arg)
+            regex_match = re.match("(.+)=(.*)", arg)
 
             if not regex_match:
                 raise RuntimeError(f"Job parameter '{arg}' should be in the format 'Key=Value'.")
