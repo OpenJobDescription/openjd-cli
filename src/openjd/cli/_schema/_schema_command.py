@@ -2,18 +2,24 @@
 
 from argparse import ArgumentParser, Namespace
 import json
+from typing import Union
 
 from .._common import OpenJDCliResult, print_cli_result
-from ...model import SchemaVersion
+from openjd.model import SchemaVersion, JobTemplate, EnvironmentTemplate
 
 
 def add_schema_arguments(schema_parser: ArgumentParser) -> None:
+    allowed_values = [
+        v.value
+        for v in SchemaVersion
+        if SchemaVersion.is_job_template(v) or SchemaVersion.is_environment_template(v)
+    ]
     schema_parser.add_argument(
         "--version",
         action="store",
         type=SchemaVersion,
         required=True,
-        help="The specification version to return a JSON schema document for.",
+        help=f"The specification version to return a JSON schema document for. Allowed values: {', '.join(allowed_values)}",
     )
 
 
@@ -39,8 +45,11 @@ def do_get_schema(args: Namespace) -> OpenJDCliResult:
     Job templates against.
     """
 
+    Template: Union[type[JobTemplate], type[EnvironmentTemplate]]
     if args.version == SchemaVersion.v2023_09:
-        from ...model.v2023_09 import JobTemplate
+        from openjd.model.v2023_09 import JobTemplate as Template
+    elif args.version == SchemaVersion.ENVIRONMENT_v2023_09:
+        from openjd.model.v2023_09 import EnvironmentTemplate as Template
     else:
         return OpenJDCliResult(
             status="error", message=f"ERROR: Cannot generate schema for version '{args.version}'."
@@ -52,7 +61,7 @@ def do_get_schema(args: Namespace) -> OpenJDCliResult:
         # The `schema` attribute will have to be updated if/when Pydantic
         # is updated to v2.
         # (AFAIK it can be replaced with `model_json_schema()`.)
-        schema_doc = JobTemplate.schema()
+        schema_doc = Template.schema()
         _process_regex(schema_doc)
     except Exception as e:
         return OpenJDCliResult(status="error", message=f"ERROR generating schema: {str(e)}")

@@ -9,7 +9,7 @@ from unittest.mock import patch
 from . import MOCK_TEMPLATE, SampleSteps
 from openjd.cli._common._job_from_template import job_from_template
 from openjd.cli._run._local_session._session_manager import LocalSession
-from openjd.model import decode_template
+from openjd.model import decode_job_template
 
 
 @pytest.fixture(scope="function", params=[[], ["Message='A new message!'"]])
@@ -27,7 +27,7 @@ def sample_job_and_dirs(request):
         os.makedirs(template_dir)
         os.makedirs(current_working_dir)
 
-        template = decode_template(template=MOCK_TEMPLATE)
+        template = decode_job_template(template=MOCK_TEMPLATE)
         yield (
             job_from_template(
                 template=template,

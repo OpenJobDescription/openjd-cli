@@ -12,8 +12,9 @@ from .._common import (
     generate_job,
     get_task_params,
     print_cli_result,
+    read_environment_template,
 )
-from openjd.model import Job, Step
+from openjd.model import DecodeValidationError, EnvironmentTemplate, Job, Step
 from openjd.sessions import PathMappingRule
 
 
@@ -83,6 +84,15 @@ def add_run_arguments(run_parser: ArgumentParser):
         + "the 'pathmapping-1.0' schema. Can either be supplied as a string or as a path to a JSON/YAML document, "
         + "prefixed with 'file://'.",
     )
+    run_parser.add_argument(
+        "--environment",
+        "--env",
+        dest="environments",
+        action="append",
+        type=str,
+        metavar="<path-to-JSON/YAML-file> [<path-to-JSON/YAML-file>] ...",
+        help="Apply the given environments to the Session in the order given.",
+    )
 
 
 def _collect_required_steps(step_map: dict[str, Step], step: Step) -> list[Step]:
@@ -128,6 +138,7 @@ def _run_local_session(
     step: Step,
     maximum_tasks: int = -1,
     task_parameter_values: list[dict] = [],
+    environments: Optional[list[EnvironmentTemplate]] = None,
     path_mapping_rules: Optional[list[PathMappingRule]],
     should_run_dependencies: bool = False,
     should_print_logs: bool = True,
@@ -148,6 +159,7 @@ def _run_local_session(
         job=job,
         session_id="sample_session",
         path_mapping_rules=path_mapping_rules,
+        environments=environments,
         should_print_logs=should_print_logs,
     ) as session:
         session.initialize(
@@ -194,6 +206,38 @@ def do_run(args: Namespace) -> OpenJDCliResult:
     sets in sequence.
     """
 
+    environments: list[EnvironmentTemplate] = []
+    if args.environments:
+        for env in args.environments:
+            filename = Path(env).expanduser()
+            try:
+                # Raises: RuntimeError, DecodeValidationError
+                template = read_environment_template(filename)
+                environments.append(template)
+            except (RuntimeError, DecodeValidationError) as e:
+                return OpenJDCliResult(status="error", message=str(e))
+
+    path_mapping_rules: Optional[list[PathMappingRule]] = None
+    if args.path_mapping_rules:
+        if args.path_mapping_rules.startswith("file://"):
+            filename = Path(args.path_mapping_rules.removeprefix("file://")).expanduser()
+            with open(filename, encoding="utf8") as f:
+                parsed_rules = json.load(f)
+        else:
+            parsed_rules = json.loads(args.path_mapping_rules)
+        if parsed_rules.get("version", None) != "pathmapping-1.0":
+            return OpenJDCliResult(
+                status="error",
+                message="Path mapping rules must have a 'version' value of 'pathmapping-1.0'",
+            )
+        if not isinstance(parsed_rules.get("path_mapping_rules", None), list):
+            return OpenJDCliResult(
+                status="error",
+                message="Path mapping rules must contain a list named 'path_mapping_rules'",
+            )
+        rules_list = parsed_rules.get("path_mapping_rules")
+        path_mapping_rules = [PathMappingRule.from_dict(rule) for rule in rules_list]
+
     try:
         # Raises: RuntimeError
         sample_job = generate_job(args)
@@ -205,27 +249,6 @@ def do_run(args: Namespace) -> OpenJDCliResult:
     except RuntimeError as rte:
         return OpenJDCliResult(status="error", message=str(rte))
 
-    path_mapping_rules: Optional[list[PathMappingRule]] = None
-    if args.path_mapping_rules:
-        if args.path_mapping_rules.startswith("file://"):
-            filename = Path(args.path_mapping_rules.removeprefix("file://")).expanduser()
-            with open(filename, encoding="utf8") as f:
-                parsed_rules = json.load(f)
-        else:
-            parsed_rules = json.loads(args.path_mapping_rules)
-        if parsed_rules.get("version", None) != "pathmapping-1.0":
-            raise OpenJDCliResult(
-                status="error",
-                message="Path mapping rules must have a 'version' value of 'pathmapping-1.0'",
-            )
-        if not isinstance(parsed_rules.get("path_mapping_rules", None), list):
-            raise OpenJDCliResult(
-                status="error",
-                message="Path mapping rules must contain  a list named 'path_mapping_rules'",
-            )
-        rules_list = parsed_rules.get("path_mapping_rules")
-        path_mapping_rules = [PathMappingRule.from_dict(rule) for rule in rules_list]
-
     # Map Step names to Step objects so they can be easily accessed
     step_map = {step.name: step for step in sample_job.steps}
 
@@ -236,6 +259,7 @@ def do_run(args: Namespace) -> OpenJDCliResult:
             step=step_map[args.step],
             task_parameter_values=task_params,
             maximum_tasks=args.maximum_tasks,
+            environments=environments,
             path_mapping_rules=path_mapping_rules,
             should_run_dependencies=(args.run_dependencies),
             should_print_logs=(args.output == "human-readable"),

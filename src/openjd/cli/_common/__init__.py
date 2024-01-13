@@ -14,7 +14,12 @@ from ._job_from_template import (
     get_job_params,
     get_task_params,
 )
-from ._validation_utils import get_doc_type, read_template
+from ._validation_utils import (
+    get_doc_type,
+    read_template,
+    read_job_template,
+    read_environment_template,
+)
 from openjd.model import DecodeValidationError, Job
 
 __all__ = [
@@ -22,6 +27,8 @@ __all__ = [
     "get_job_params",
     "get_task_params",
     "read_template",
+    "read_job_template",
+    "read_environment_template",
     "validate_task_parameters",
 ]
 
@@ -61,7 +68,7 @@ def add_common_arguments(
             "path",
             type=Path,
             action="store",
-            help="The path to the template file or Job Bundle to use.",
+            help="The path to the template file.",
         )
     if CommonArgument.JOB_PARAMS in common_arg_options:
         parser.add_argument(
@@ -101,12 +108,12 @@ class SubparserGroup:
 def generate_job(args: Namespace) -> Job:
     try:
         # Raises: RuntimeError, DecodeValidationError
-        template_file, template = read_template(args)
+        template = read_job_template(args.path)
         # Raises: RuntimeError
         return job_from_template(
             template,
             args.job_params if args.job_params else None,
-            Path(os.path.abspath(template_file.parent)),
+            Path(os.path.abspath(args.path.parent)),
             Path(os.getcwd()),
         )
     except RuntimeError as rte:

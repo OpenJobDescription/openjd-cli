@@ -21,9 +21,12 @@ from openjd.cli._common import (
     get_job_params,
     get_task_params,
     read_template,
+    read_job_template,
+    read_environment_template,
 )
 from openjd.cli._common._job_from_template import job_from_template
 from openjd.model import (
+    DecodeValidationError,
     decode_template,
 )
 
@@ -41,25 +44,6 @@ def template_dir_and_cwd():
         os.makedirs(current_working_dir)
 
         yield (template_dir, current_working_dir)
-
-
-@patch("openjd.cli._common._validation_utils.decode_template")
-def test_decode_template_called(mock_decode_template: Mock):
-    """
-    Tests that calls to `read_template` will call `decode_template` with the appropriately decoded dictionary
-    """
-    temp_template = None
-
-    with tempfile.NamedTemporaryFile(
-        mode="w+t", suffix=".template.json", encoding="utf8", delete=False
-    ) as temp_template:
-        json.dump(MOCK_TEMPLATE, temp_template.file)
-
-    mock_decode_template.assert_not_called()
-    read_template(Namespace(path=Path(temp_template.name), output="human-readable"))
-    mock_decode_template.assert_called_once_with(template=MOCK_TEMPLATE)
-
-    Path(temp_template.name).unlink()
 
 
 @pytest.mark.parametrize(
@@ -81,13 +65,11 @@ def test_read_template_success(tempfile_extension: str, doc_serializer: Callable
     ) as temp_template:
         doc_serializer(MOCK_TEMPLATE, temp_template)
 
-    mock_args = Namespace(path=Path(temp_template.name), output="human-readable")
-    new_path, decoded_template = read_template(mock_args)
-    assert new_path == Path(temp_template.name)
-    assert decoded_template.name == MOCK_TEMPLATE["name"]
-    assert len(decoded_template.steps) == len(MOCK_TEMPLATE["steps"])
+    template_filename = Path(temp_template.name)
+    result = read_template(template_filename)
+    assert result == MOCK_TEMPLATE
 
-    Path(temp_template.name).unlink()
+    template_filename.unlink()
 
 
 @pytest.mark.parametrize(
@@ -99,8 +81,8 @@ def test_read_template_success(tempfile_extension: str, doc_serializer: Callable
         pytest.param(
             True,
             False,
-            "'some-file.json' is not a file or directory.",
-            id="Path is not a file or directory",
+            "'some-file.json' is not a file.",
+            id="Path is not a file",
         ),
         pytest.param(
             True,
@@ -116,13 +98,13 @@ def test_read_template_fileerror(
     """
     Tests that `read_template` raises a RuntimeError when unable to open a file
     """
-    mock_args = Namespace(path=Path("some-file.json"), output="human-readable")
+    args = Path("some-file.json")
     with (
         pytest.raises(RuntimeError) as rte,
         patch.object(Path, "exists", Mock(return_value=mock_exists_response)),
         patch.object(Path, "is_file", Mock(return_value=mock_is_file_response)),
     ):
-        read_template(mock_args)
+        read_template(args)
 
     assert str(rte.value).startswith(expected_error)
 
@@ -132,49 +114,19 @@ def test_read_template_fileerror(
     [
         pytest.param(
             ".template.json",
-            '{ "name": "something" }',
+            '{ "specificationVersion": "jobtemplate-2023-09" }',
             id="JSON missing field",
         ),
         pytest.param(
-            ".template.json",
-            '{ "specificationVersion": "jobtemplate-2023-09", "name": 5, "steps": [{"name": "step1", "script": {"actions": {"onRun": {"command": "something"}}}}]}',
-            id="JSON type error",
-        ),
-        pytest.param(
-            ".template.json",
-            '{ "specificationVersion": "jobtemplate-2023-09", "name": "{{{{{a name}", "steps": [{"name": "step1", "script": {"actions": {"onRun": {"command": \'echo "Hello, world!"\'}}}}],}',
-            id="Unparsable JSON brackets",
-        ),
-        pytest.param(
-            ".template.json",
-            '{ "specificationVersion": "jobtemplate-2023-09template-2023-09", "steps": "not a real step"} ',
-            id="Multiple JSON errors",
-        ),
-        pytest.param(
             ".template.yaml",
-            'specificationVersion: "jobtemplate-2023-09"\nname: "something"',
+            'specificationVersion: "jobtemplate-2023-09"\n',
             id="YAML missing field",
-        ),
-        pytest.param(
-            ".template.yaml",
-            'specificationVersion: "jobtemplate-2023-09"\nname: "something"\nsteps: "not a real step"',
-            id="YAML type error",
-        ),
-        pytest.param(
-            ".template.yaml",
-            'specificationVersion\nname: "something"\nsteps: "not a real step"',
-            id="Badly-formatted YAML",
-        ),
-        pytest.param(
-            ".template.yaml",
-            'specificationVersion: "jobtemplate-2023-09"\nname:\nsteps: "not a real step"',
-            id="Multiple YAML errors",
         ),
     ],
 )
-def test_read_template_parsingerror(tempfile_extension: str, file_contents: str):
+def test_read_job_template_parsingerror(tempfile_extension: str, file_contents: str):
     """
-    Tests that `read_template` raises a RuntimeError that when provided a JSON/YAML body with schema errors
+    Tests that `read_job_template` raises a DecodeValidationError when provided a JSON/YAML body with schema errors
     """
     temp_template = None
 
@@ -183,11 +135,46 @@ def test_read_template_parsingerror(tempfile_extension: str, file_contents: str)
     ) as temp_template:
         temp_template.write(file_contents)
 
-    mock_args = Namespace(path=Path(temp_template.name), output="human-readable")
-    with pytest.raises(RuntimeError) as re:
-        read_template(mock_args)
+    mock_args = Path(temp_template.name)
+    with pytest.raises(DecodeValidationError) as re:
+        read_job_template(mock_args)
 
-    assert str(re.value).startswith(f"'{temp_template.name}' failed checks:")
+    assert "validation errors for JobTemplate" in str(re.value)
+
+    Path(temp_template.name).unlink()
+
+
+@pytest.mark.parametrize(
+    "tempfile_extension,file_contents",
+    [
+        pytest.param(
+            ".template.json",
+            '{ "specificationVersion": "environment-2023-09" }',
+            id="JSON missing field",
+        ),
+        pytest.param(
+            ".template.yaml",
+            'specificationVersion: "environment-2023-09"\n',
+            id="YAML missing field",
+        ),
+    ],
+)
+def test_read_environment_template_parsingerror(tempfile_extension: str, file_contents: str):
+    """
+    Tests that `read_environment_template` raises a DecodeValidationError when provided a JSON/YAML body with schema errors
+    """
+    temp_template = None
+
+    with tempfile.NamedTemporaryFile(
+        mode="w+t", suffix=tempfile_extension, encoding="utf8", delete=False
+    ) as temp_template:
+        temp_template.write(file_contents)
+
+    mock_args = Path(temp_template.name)
+    with pytest.raises(DecodeValidationError) as re:
+        read_environment_template(mock_args)
+
+    assert "validation errors for EnvironmentTemplate" in str(re.value)
 
     Path(temp_template.name).unlink()
 
@@ -589,3 +576,47 @@ def test_generate_job_success(
         )
 
     Path(temp_template.name).unlink()
+
+
+@pytest.mark.parametrize(
+    "template_dict, param_list, expected_error",
+    [
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "Test",
+                "parameterDefinitions": [{"name": "Foo", "type": "INT"}],
+                "steps": [{"name": "Test", "script": {"actions": {"onRun": {"command": "test"}}}}],
+            },
+            ["Foo=blah"],
+            "ERROR generating Job",
+            id="RuntimeError when parameters fail validation",
+        ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+            },
+            [],
+            "ERROR validating template",
+            id="DecodeValidation converted to RuntimeError when template fails parsing",
+        ),
+    ],
+)
+def test_generate_job_raises(
+    template_dict: dict, param_list: list[str], expected_error: str
+) -> None:
+    """Test that generate_job() raises the expected exceptions."""
+
+    temp_template = None
+
+    with tempfile.NamedTemporaryFile(
+        mode="w+t", suffix=".template.json", encoding="utf8", delete=False
+    ) as temp_template:
+        json.dump(template_dict, temp_template.file)
+
+    args = Namespace(path=Path(temp_template.name), job_params=param_list, output="human-readable")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        generate_job(args)
+
+    assert expected_error in str(excinfo.value)
