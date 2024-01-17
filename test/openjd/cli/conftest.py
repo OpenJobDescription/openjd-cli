@@ -1,6 +1,9 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
+import os
 import pytest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from . import MOCK_TEMPLATE, SampleSteps
@@ -10,18 +13,36 @@ from openjd.model import decode_template
 
 
 @pytest.fixture(scope="function", params=[[], ["Message='A new message!'"]])
-def sample_job(request):
+def sample_job_and_dirs(request):
     """
     Uses the MOCK_TEMPLATE object to create a Job, once
     with default parameters and once with user-specified parameters.
+
+    This fixture also manages the life time of a temporary directory that's
+    used for the job template dir and the current working directory.
     """
-    template = decode_template(template=MOCK_TEMPLATE)
-    return job_from_template(template=template, parameter_args=request.param)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        template_dir = Path(tmpdir) / "template_dir"
+        current_working_dir = Path(tmpdir) / "current_working_dir"
+        os.makedirs(template_dir)
+        os.makedirs(current_working_dir)
+
+        template = decode_template(template=MOCK_TEMPLATE)
+        yield (
+            job_from_template(
+                template=template,
+                parameter_args=request.param,
+                job_template_dir=template_dir,
+                current_working_dir=current_working_dir,
+            ),
+            template_dir,
+            current_working_dir,
+        )
 
 
 @pytest.fixture(scope="function")
-def sample_step_map(sample_job):
-    return {step.name: step for step in sample_job.steps}
+def sample_step_map(sample_job_and_dirs):
+    return {step.name: step for step in sample_job_and_dirs[0].steps}
 
 
 @pytest.fixture(

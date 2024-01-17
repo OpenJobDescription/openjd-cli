@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Literal
 import json
 import yaml
+import os
 
 from ._job_from_template import (
     job_from_template,
@@ -100,14 +101,18 @@ class SubparserGroup:
 def generate_job(args: Namespace) -> Job:
     try:
         # Raises: RuntimeError, DecodeValidationError
-        _, template = read_template(args)
+        template_file, template = read_template(args)
         # Raises: RuntimeError
-        sample_job = job_from_template(template, args.job_params if args.job_params else None)
+        return job_from_template(
+            template,
+            args.job_params if args.job_params else None,
+            Path(os.path.abspath(template_file.parent)),
+            Path(os.getcwd()),
+        )
     except RuntimeError as rte:
         raise RuntimeError(f"ERROR generating Job: {str(rte)}")
     except DecodeValidationError as dve:
         raise RuntimeError(f"ERROR validating template: {str(dve)}")
-    return sample_job
 
 
 @dataclass

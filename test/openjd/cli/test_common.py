@@ -28,6 +28,21 @@ from openjd.model import (
 )
 
 
+@pytest.fixture(scope="function")
+def template_dir_and_cwd():
+    """
+    This fixture manages the life time of a temporary directory that's
+    used for the job template dir and the current working directory.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        template_dir = Path(tmpdir) / "template_dir"
+        current_working_dir = Path(tmpdir) / "current_working_dir"
+        os.makedirs(template_dir)
+        os.makedirs(current_working_dir)
+
+        yield (template_dir, current_working_dir)
+
+
 @patch("openjd.cli._common._validation_utils.decode_template")
 def test_decode_template_called(mock_decode_template: Mock):
     """
@@ -335,13 +350,16 @@ def test_get_job_params_error(
         ),
     ],
 )
-def test_job_from_template_success(mock_params: list, expected_job_name: str, template_dict: dict):
+def test_job_from_template_success(
+    mock_params: list, expected_job_name: str, template_dict: dict, template_dir_and_cwd: tuple
+):
     """
     Test that `job_from_template` creates a Job with the provided parameters.
     """
+    template_dir, current_working_dir = template_dir_and_cwd
     template = decode_template(template=template_dict)
 
-    result = job_from_template(template, mock_params)
+    result = job_from_template(template, mock_params, template_dir, current_working_dir)
     assert result.name == expected_job_name
     assert result.steps == template.steps
     if result.parameters:
@@ -377,15 +395,18 @@ def test_job_from_template_success(mock_params: list, expected_job_name: str, te
         ),
     ],
 )
-def test_job_from_template_error(mock_params: list, template_dict: dict, expected_error: str):
+def test_job_from_template_error(
+    mock_params: list, template_dict: dict, expected_error: str, template_dir_and_cwd: tuple
+):
     """
     Test that errors thrown by `job_from_template` have expected information
     """
+    template_dir, current_working_dir = template_dir_and_cwd
 
     template = decode_template(template=template_dict)
 
     with pytest.raises(RuntimeError) as rte:
-        job_from_template(template, mock_params)
+        job_from_template(template, mock_params, template_dir, current_working_dir)
 
     assert expected_error in str(rte.value)
 
@@ -563,6 +584,8 @@ def test_generate_job_success(
         new=Mock(side_effect=job_from_template),
     ) as patched_job_from_template:
         generate_job(mock_args)
-        patched_job_from_template.assert_called_once_with(ANY, expected_param_list)
+        patched_job_from_template.assert_called_once_with(
+            ANY, expected_param_list, Path(temp_template.name).parent, Path(os.getcwd())
+        )
 
     Path(temp_template.name).unlink()

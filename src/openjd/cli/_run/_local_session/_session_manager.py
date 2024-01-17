@@ -23,7 +23,6 @@ from openjd.sessions import (
     ActionState,
     ActionStatus,
     Parameter,
-    ParameterType,
     Session,
     SessionState,
     PathMappingRule,
@@ -70,7 +69,7 @@ class LocalSession:
         # Evaluate Job parameters, if applicable
         if job.parameters:
             parameters_as_list = [
-                Parameter(type=ParameterType(param.type.name), name=name, value=param.value)
+                Parameter(type=ParameterValueType(param.type.name), name=name, value=param.value)
                 for (name, param) in job.parameters.items()
             ]
 
@@ -170,7 +169,7 @@ class LocalSession:
                             step=dep,
                             parameters=[
                                 Parameter(
-                                    type=ParameterType(param.type.name),
+                                    type=param.type,
                                     name=name,
                                     value=param.value,
                                 )
@@ -185,9 +184,9 @@ class LocalSession:
 
         else:
             if not task_parameter_values:
-                parameter_sets = [
-                    param_set for param_set in StepParameterSpaceIterator(space=step.parameterSpace)
-                ]
+                parameter_sets: list[TaskParameterSet] = list(
+                    StepParameterSpaceIterator(space=step.parameterSpace)
+                )
             else:
                 try:
                     parameter_sets = [
@@ -217,7 +216,7 @@ class LocalSession:
                         step=step,
                         parameters=[
                             Parameter(
-                                type=ParameterType(param.type.name),
+                                type=param.type,
                                 name=name,
                                 value=param.value,
                             )

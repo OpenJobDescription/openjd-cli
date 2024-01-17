@@ -2,7 +2,7 @@
 
 from argparse import Namespace
 import json
-from pathlib import Path, PureWindowsPath, PurePosixPath
+from pathlib import Path, PurePath, PureWindowsPath, PurePosixPath
 import tempfile
 
 import pytest
@@ -16,7 +16,6 @@ from openjd.cli._run._run_command import (
     _run_local_session,
 )
 from openjd.cli._run._local_session._session_manager import LocalSession
-from openjd.model import Job
 from openjd.sessions import PathMappingRule, PathFormat, Session
 
 
@@ -107,7 +106,7 @@ def test_do_run_path_mapping_rules():
         PathMappingRule(
             source_path_format=PathFormat.WINDOWS,
             source_path=PureWindowsPath(r"C:\test"),
-            destination_path=PurePosixPath("/mnt/test"),
+            destination_path=PurePath("/mnt/test"),
         )
     ]
 
@@ -187,7 +186,9 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
     Path(temp_template.name).unlink()
 
 
-@pytest.mark.usefixtures("sample_job", "sample_step_map", "patched_session_cleanup", "capsys")
+@pytest.mark.usefixtures(
+    "sample_job_and_dirs", "sample_step_map", "patched_session_cleanup", "capsys"
+)
 @pytest.mark.parametrize(
     "step_index,dependency_indexes,should_run_dependencies",
     [
@@ -226,7 +227,7 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
     ],
 )
 def test_run_local_session_success(
-    sample_job: Job,
+    sample_job_and_dirs: tuple,
     sample_step_map: dict,
     patched_session_cleanup: Mock,
     capsys: pytest.CaptureFixture,
@@ -240,6 +241,7 @@ def test_run_local_session_success(
     Note that we don't need to test with custom Task parameters, as those are
     tested within the `LocalSession` object.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     path_mapping_rules = [
         PathMappingRule(
             source_path_format=PathFormat.WINDOWS,
@@ -273,7 +275,7 @@ def test_run_local_session_success(
     patched_session_cleanup.assert_called()
 
 
-@pytest.mark.usefixtures("sample_job", "sample_step_map")
+@pytest.mark.usefixtures("sample_job_and_dirs", "sample_step_map")
 @pytest.mark.parametrize(
     "step_index,should_run_dependencies,expected_error",
     [
@@ -289,7 +291,7 @@ def test_run_local_session_success(
     ],
 )
 def test_run_local_session_failed(
-    sample_job: Job,
+    sample_job_and_dirs: tuple,
     sample_step_map: dict,
     step_index: int,
     should_run_dependencies: bool,
@@ -298,6 +300,7 @@ def test_run_local_session_failed(
     """
     Test the output of a Session that finishes after encountering errors.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     response = _run_local_session(
         job=sample_job,
         step_map=sample_step_map,
