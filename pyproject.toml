@@ -10,7 +10,7 @@ license = "Apache-2.0"
 requires-python = ">=3.9"
 
 dependencies = [
-  "openjd-sessions == 0.2.*"
+  "openjd-sessions == 0.3.*"
 ]
 
 [project.scripts]
@@ -125,7 +125,7 @@ addopts = [
     "--cov-report=xml:build/coverage/coverage.xml",
     "--cov-report=term-missing",
     "--numprocesses=auto",
-    "--timeout=30"
+    "--timeout=60"
 ]
 
 

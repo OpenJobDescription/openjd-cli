@@ -159,7 +159,12 @@ def get_task_params(arguments: list[list[str]]) -> list[dict[str, str]]:
     return all_parameter_sets
 
 
-def job_from_template(template: JobTemplate, parameter_args: list[str] | None = None) -> Job:
+def job_from_template(
+    template: JobTemplate,
+    parameter_args: list[str] | None,
+    job_template_dir: Path,
+    current_working_dir: Path,
+) -> Job:
     """
     Given a decoded Job Template and a user-inputted parameter dictionary,
     generates a Job object.
@@ -170,7 +175,10 @@ def job_from_template(template: JobTemplate, parameter_args: list[str] | None = 
 
     try:
         parameter_values = preprocess_job_parameters(
-            job_template=template, job_parameter_values=parameter_dict
+            job_template=template,
+            job_parameter_values=parameter_dict,
+            job_template_dir=job_template_dir,
+            current_working_dir=current_working_dir,
         )
     except ValueError as ve:
         raise RuntimeError(f"Parameters can't be used with Template: {str(ve)}")

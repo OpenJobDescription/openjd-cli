@@ -5,7 +5,6 @@ from unittest.mock import call, patch
 import signal
 
 from . import SampleSteps, SESSION_PARAMETERS
-from openjd.model import Job
 from openjd.sessions import Session, SessionState
 from openjd.cli._run._local_session._session_manager import LocalSession
 import openjd.cli._run._local_session._session_manager as local_session_mod
@@ -36,7 +35,7 @@ def patched_actions():
         yield patched_enter, patched_run, patched_exit, patched_callback
 
 
-@pytest.mark.usefixtures("sample_job")
+@pytest.mark.usefixtures("sample_job_and_dirs")
 @pytest.mark.parametrize(
     "given_parameters,expected_parameters",
     [
@@ -63,11 +62,12 @@ def patched_actions():
     ],
 )
 def test_generate_task_parameter_set(
-    sample_job: Job, given_parameters: dict, expected_parameters: dict
+    sample_job_and_dirs: tuple, given_parameters: dict, expected_parameters: dict
 ):
     """
     Test that a LocalSession can generate Task parameters given valid user input.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     with LocalSession(job=sample_job, session_id="my-session") as session:
         # Convince the type checker that `parameterSpace` exists
         param_space = sample_job.steps[SampleSteps.TaskParamStep].parameterSpace
@@ -82,10 +82,10 @@ def test_generate_task_parameter_set(
             )
 
 
-@pytest.mark.usefixtures("sample_job")
+@pytest.mark.usefixtures("sample_job_and_dirs")
 @pytest.mark.parametrize(*SESSION_PARAMETERS)
 def test_localsession_initialize(
-    sample_job: Job,
+    sample_job_and_dirs: tuple,
     dependency_indexes: list[int],
     step_index: int,
     maximum_tasks: int,
@@ -97,6 +97,7 @@ def test_localsession_initialize(
     Test that initializing the local Session clears the `ended` flag, only generates Task parameters
     when necessary, and adds to the Action queue appropriately.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     with LocalSession(job=sample_job, session_id="my-session") as session:
         with patch.object(
             LocalSession,
@@ -121,9 +122,10 @@ def test_localsession_initialize(
         assert session._action_queue.qsize() == 2 * num_expected_environments + num_expected_tasks
 
 
-@pytest.mark.usefixtures("sample_job")
-def test_localsession_traps_sigint(sample_job: Job):
+@pytest.mark.usefixtures("sample_job_and_dirs")
+def test_localsession_traps_sigint(sample_job_and_dirs: tuple):
     # Make sure that we hook up, and remove the signal handler when using the local session
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
 
     # GIVEN
     with patch.object(local_session_mod, "signal") as signal_mod:
@@ -143,10 +145,10 @@ def test_localsession_traps_sigint(sample_job: Job):
     )
 
 
-@pytest.mark.usefixtures("sample_job", "capsys")
+@pytest.mark.usefixtures("sample_job_and_dirs", "capsys")
 @pytest.mark.parametrize(*SESSION_PARAMETERS)
 def test_localsession_run_success(
-    sample_job: Job,
+    sample_job_and_dirs: tuple,
     capsys: pytest.CaptureFixture,
     dependency_indexes: list[int],
     step_index: int,
@@ -159,6 +161,7 @@ def test_localsession_run_success(
     Test that calling `run` causes the local Session to
     iterate through the actions defined in the Job.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     with LocalSession(job=sample_job, session_id="my-session") as session:
         session.initialize(
             dependencies=[sample_job.steps[i] for i in dependency_indexes],
@@ -182,11 +185,12 @@ def test_localsession_run_success(
     )
 
 
-@pytest.mark.usefixtures("sample_job")
-def test_localsession_run_not_ready(sample_job: Job):
+@pytest.mark.usefixtures("sample_job_and_dirs")
+def test_localsession_run_not_ready(sample_job_and_dirs: tuple):
     """
     Test that a LocalSession throws an error when it is not in the "READY" state.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     with LocalSession(job=sample_job, session_id="my-session") as session:
         with patch.object(Session, "state", new=SessionState.ENDED), pytest.raises(
             RuntimeError
@@ -196,11 +200,12 @@ def test_localsession_run_not_ready(sample_job: Job):
     assert "not in a READY state" in str(rte.value)
 
 
-@pytest.mark.usefixtures("sample_job", "capsys")
-def test_localsession_run_failed(sample_job: Job, capsys: pytest.CaptureFixture):
+@pytest.mark.usefixtures("sample_job_and_dirs", "capsys")
+def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.CaptureFixture):
     """
     Test that a LocalSession can gracefully handle an error in its inner Session.
     """
+    sample_job, template_dir, current_working_dir = sample_job_and_dirs
     with LocalSession(job=sample_job, session_id="bad-session") as session:
         session.initialize(dependencies=[], step=sample_job.steps[SampleSteps.BadCommand])
         session.run()
