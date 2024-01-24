@@ -2,14 +2,16 @@
 
 from argparse import Namespace
 import json
-from pathlib import Path, PurePath, PureWindowsPath, PurePosixPath
+from pathlib import Path, PureWindowsPath, PurePosixPath
 import tempfile
+import re
+import os
+from typing import Any
 
 import pytest
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import Mock, patch
 
 from . import MOCK_TEMPLATE, SampleSteps
-from openjd.cli._run import _run_command
 from openjd.cli._run._run_command import (
     OpenJDRunResult,
     do_run,
@@ -19,56 +21,278 @@ from openjd.cli._run._local_session._session_manager import LocalSession
 from openjd.sessions import PathMappingRule, PathFormat, Session
 
 
+TEST_RUN_JOB_TEMPLATE_BASIC = {
+    "specificationVersion": "jobtemplate-2023-09",
+    "name": "Job",
+    "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+    "jobEnvironments": [
+        {
+            "name": "J1",
+            "script": {
+                "actions": {
+                    "onEnter": {"command": "echo", "args": ["J1 Enter"]},
+                    "onExit": {"command": "echo", "args": ["J1 Exit"]},
+                }
+            },
+        },
+        {
+            "name": "J2",
+            "script": {
+                "actions": {
+                    "onEnter": {"command": "echo", "args": ["J2 Enter"]},
+                    "onExit": {"command": "echo", "args": ["J2 Exit"]},
+                }
+            },
+        },
+    ],
+    "steps": [
+        {
+            "name": "First",
+            "parameterSpace": {
+                "taskParameterDefinitions": [
+                    {"name": "Foo", "type": "INT", "range": "1"},
+                    {"name": "Bar", "type": "STRING", "range": ["Bar1", "Bar2"]},
+                ]
+            },
+            "stepEnvironments": [
+                {
+                    "name": "FirstS",
+                    "script": {
+                        "actions": {
+                            "onEnter": {"command": "echo", "args": ["FirstS Enter"]},
+                            "onExit": {"command": "echo", "args": ["FirstS Exit"]},
+                        }
+                    },
+                },
+            ],
+            "script": {
+                "actions": {
+                    "onRun": {
+                        "command": "echo",
+                        "args": [
+                            "J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}",
+                        ],
+                    }
+                }
+            },
+        }
+    ],
+}
+
+TEST_RUN_JOB_TEMPLATE_DEPENDENCY = {
+    "specificationVersion": "jobtemplate-2023-09",
+    "name": "Job",
+    "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+    "jobEnvironments": [
+        {
+            "name": "J1",
+            "script": {
+                "actions": {
+                    "onEnter": {"command": "echo", "args": ["J1 Enter"]},
+                    "onExit": {"command": "echo", "args": ["J1 Exit"]},
+                }
+            },
+        },
+    ],
+    "steps": [
+        {
+            "name": "First",
+            "parameterSpace": {
+                "taskParameterDefinitions": [
+                    {"name": "Foo", "type": "INT", "range": "1"},
+                    {"name": "Bar", "type": "STRING", "range": ["Bar1", "Bar2"]},
+                ]
+            },
+            "script": {
+                "actions": {
+                    "onRun": {
+                        "command": "echo",
+                        "args": [
+                            "J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}",
+                        ],
+                    }
+                }
+            },
+        },
+        {
+            "name": "Second",
+            "dependencies": [{"dependsOn": "First"}],
+            "parameterSpace": {
+                "taskParameterDefinitions": [
+                    {"name": "Fuz", "type": "INT", "range": "1-2"},
+                ]
+            },
+            "script": {
+                "actions": {
+                    "onRun": {
+                        "command": "echo",
+                        "args": [
+                            "J={{Param.J}} Fuz={{Task.Param.Fuz}}.",
+                        ],
+                    }
+                }
+            },
+        },
+    ],
+}
+
+TEST_RUN_ENV_TEMPLATE_1 = {
+    "specificationVersion": "environment-2023-09",
+    "environment": {
+        "name": "Env1",
+        "script": {
+            "actions": {
+                "onEnter": {"command": "echo", "args": ["Env1 Enter"]},
+                "onExit": {"command": "echo", "args": ["Env1 Exit"]},
+            }
+        },
+    },
+}
+
+TEST_RUN_ENV_TEMPLATE_2 = {
+    "specificationVersion": "environment-2023-09",
+    "environment": {
+        "name": "Env2",
+        "script": {
+            "actions": {
+                "onEnter": {"command": "echo", "args": ["Env2 Enter"]},
+                "onExit": {"command": "echo", "args": ["Env2 Exit"]},
+            }
+        },
+    },
+}
+
+
 @pytest.mark.parametrize(
-    "step_name,task_params,should_run_dependencies",
+    "job_template,env_templates,step_name,task_params,run_dependencies,expected_output,expected_not_in_output",
     [
-        pytest.param("BareStep", [], False, id="Basic step"),
-        pytest.param("NormalStep", [], False, id="Step with extra environments"),
-        pytest.param("DependentStep", [], False, id="Exclude dependencies"),
-        pytest.param("DependentStep", [], True, id="Include dependencies"),
-        pytest.param("TaskParamStep", [], False, id="Step with Task parameters"),
         pytest.param(
-            "TaskParamStep",
-            [["TaskNumber=1 TaskMessage=Hello!"]],
-            False,
-            id="Custom Task parameters",
+            TEST_RUN_JOB_TEMPLATE_BASIC,
+            [],  # Env Templates
+            "First",  # step name
+            [],  # Task params
+            True,  # run_dependencies
+            re.compile(
+                r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit"
+            ),
+            "",
+            id="RunFirstStep",
         ),
         pytest.param(
-            "TaskParamStep",
-            [['TaskNumber=1 TaskMessage="Hello, world!"']],
-            False,
-            id="Custom Task parameters with commas",
+            TEST_RUN_JOB_TEMPLATE_BASIC,
+            [],  # Env Templates
+            "First",  # step name
+            [["Foo=1 Bar=Bar1"]],  # Task params
+            True,  # run_dependencies
+            re.compile(
+                r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*FirstS Exit.*J2 Exit.*J1 Exit"
+            ),
+            "Foo=1. Bar=Bar2",
+            id="RunSelectTask",
+        ),
+        pytest.param(
+            TEST_RUN_JOB_TEMPLATE_DEPENDENCY,
+            [],  # Env Templates
+            "Second",  # step name
+            [],  # Task params
+            True,  # run_dependencies
+            re.compile(
+                r"J1 Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"
+            ),
+            "",
+            id="RunSecondStepWithDep",
+        ),
+        pytest.param(
+            TEST_RUN_JOB_TEMPLATE_DEPENDENCY,
+            [],  # Env Templates
+            "Second",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            re.compile(r"J1 Enter.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"),
+            "Foo=1. Bar=Bar1",
+            id="RunSecondStepNoDep",
+        ),
+        pytest.param(
+            TEST_RUN_JOB_TEMPLATE_BASIC,
+            [TEST_RUN_ENV_TEMPLATE_1],  # Env Templates
+            "First",  # step name
+            [],  # Task params
+            True,  # run_dependencies
+            re.compile(
+                r"Env1 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env1 Exit"
+            ),
+            "",
+            id="WithOneEnv",
+        ),
+        pytest.param(
+            TEST_RUN_JOB_TEMPLATE_BASIC,
+            [TEST_RUN_ENV_TEMPLATE_1, TEST_RUN_ENV_TEMPLATE_2],  # Env Templates
+            "First",  # step name
+            [],  # Task params
+            True,  # run_dependencies
+            re.compile(
+                r"Env1 Enter.*Env2 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env2 Exit.*Env1 Exit"
+            ),
+            "",
+            id="WithTwoEnvs",
         ),
     ],
 )
 def test_do_run_success(
+    job_template: dict[str, Any],
+    env_templates: list[dict[str, Any]],
     step_name: str,
-    task_params: list[str],
-    should_run_dependencies: bool,
-):
-    """
-    Test that the `run` command succeeds with various argument options.
-    """
-    temp_template = None
+    task_params: list[list[str]],
+    run_dependencies: bool,
+    expected_output: re.Pattern[str],
+    expected_not_in_output: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that the 'run' command correctly runs templates and obtains the expected results."""
 
-    with tempfile.NamedTemporaryFile(
-        mode="w+t", suffix=".template.json", encoding="utf8", delete=False
-    ) as temp_template:
-        json.dump(MOCK_TEMPLATE, temp_template.file)
+    files_created: list[Path] = []
+    try:
+        # GIVEN
+        with tempfile.NamedTemporaryFile(
+            mode="w+t", suffix=".template.json", encoding="utf8", delete=False
+        ) as job_template_file:
+            json.dump(job_template, job_template_file.file)
+        files_created.append(Path(job_template_file.name))
 
-    mock_args = Namespace(
-        path=Path(temp_template.name),
-        step=step_name,
-        job_params=None,
-        task_params=task_params,
-        maximum_tasks=-1,
-        run_dependencies=should_run_dependencies,
-        path_mapping_rules=None,
-        output="human-readable",
-    )
-    do_run(mock_args)
+        environments_files: list[str] = []
+        for e in env_templates:
+            with tempfile.NamedTemporaryFile(
+                mode="w+t", suffix=".env.template.json", encoding="utf8", delete=False
+            ) as file:
+                json.dump(e, file.file)
+            files_created.append(Path(file.name))
+            environments_files.append(file.name)
 
-    Path(temp_template.name).unlink()
+        args = Namespace(
+            path=Path(job_template_file.name),
+            step=step_name,
+            job_params=["J=Jvalue"],
+            task_params=task_params,
+            maximum_tasks=-1,
+            run_dependencies=run_dependencies,
+            path_mapping_rules=None,
+            environments=environments_files,
+            output="human-readable",
+        )
+
+        # WHEN
+        do_run(args)
+
+        # THEN
+        assert not any(
+            os.linesep in m for m in caplog.messages
+        ), "paranoia; Windows is acting weird"
+        assert expected_output.search("".join(m.strip() for m in caplog.messages))
+        if expected_not_in_output:
+            assert expected_not_in_output not in caplog.text
+    finally:
+        for f in files_created:
+            f.unlink()
 
 
 def test_do_run_error():
@@ -82,33 +306,41 @@ def test_do_run_error():
         task_params=None,
         run_dependencies=False,
         path_mapping_rules=None,
+        environments=[],
         output="human-readable",
     )
     with pytest.raises(SystemExit):
         do_run(mock_args)
 
 
-def test_do_run_path_mapping_rules():
+def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
     """
     Test that the `run` command exits on any error (e.g., a non-existent template file).
     """
+    # GIVEN
+    job_template = {
+        "specificationVersion": "jobtemplate-2023-09",
+        "name": "Job",
+        "parameterDefinitions": [{"name": "TestPath", "type": "PATH"}],
+        "steps": [
+            {
+                "name": "TestStep",
+                "script": {
+                    "actions": {"onRun": {"command": "echo", "args": ["Mapped:{{Param.TestPath}}"]}}
+                },
+            }
+        ],
+    }
     path_mapping_rules = {
         "version": "pathmapping-1.0",
         "path_mapping_rules": [
             {
-                "source_path_format": "WINDOWS",
-                "source_path": r"C:\test",
+                "source_path_format": "POSIX" if os.name == "posix" else "WINDOWS",
+                "source_path": r"/home/test" if os.name == "posix" else r"C:\test",
                 "destination_path": "/mnt/test",
             }
         ],
     }
-    expected_path_mapping_rules = [
-        PathMappingRule(
-            source_path_format=PathFormat.WINDOWS,
-            source_path=PureWindowsPath(r"C:\test"),
-            destination_path=PurePath("/mnt/test"),
-        )
-    ]
 
     try:
         # Set up a rules file and a job template file
@@ -121,34 +353,31 @@ def test_do_run_path_mapping_rules():
         with tempfile.NamedTemporaryFile(
             mode="w+t", suffix=".template.json", encoding="utf8", delete=False
         ) as temp_template:
-            json.dump(MOCK_TEMPLATE, temp_template.file)
+            json.dump(job_template, temp_template.file)
 
-        # Patch out _run_local_session so we can check how it gets called
-        with patch.object(_run_command, "_run_local_session") as mock_run_local_session:
-            # Call the CLI run command, using the temp files we created
-            mock_args = Namespace(
-                path=Path(temp_template.name),
-                step="NormalStep",
-                job_params=None,
-                task_params=None,
-                run_dependencies=False,
-                output="human-readable",
-                path_mapping_rules="file://" + temp_rules.name,
-                maximum_tasks=1,
-            )
-            do_run(mock_args)
+        run_args = Namespace(
+            path=Path(temp_template.name),
+            step="TestStep",
+            job_params=[r"TestPath=/home/test" if os.name == "posix" else r"TestPath=c:\test"],
+            task_params=None,
+            run_dependencies=False,
+            output="human-readable",
+            path_mapping_rules="file://" + temp_rules.name,
+            environments=[],
+            maximum_tasks=1,
+        )
 
-            # Confirm _run_local_session gets called with the correct path mapping rules
-            mock_run_local_session.assert_called_once_with(
-                job=ANY,
-                step=ANY,
-                step_map=ANY,
-                maximum_tasks=1,
-                task_parameter_values=ANY,
-                path_mapping_rules=expected_path_mapping_rules,
-                should_run_dependencies=False,
-                should_print_logs=True,
-            )
+        # WHEN
+        do_run(run_args)
+
+        # THEN
+        assert not any(
+            os.linesep in m for m in caplog.messages
+        ), "paranoia; Windows is acting weird."
+        if os.name == "posix":
+            assert any("Mapped:/mnt/test" in m for m in caplog.messages)
+        else:
+            assert any(r"Mapped:\\mnt\\test" in m for m in caplog.messages)
     finally:
         if temp_rules:
             Path(temp_rules.name).unlink()
@@ -177,6 +406,7 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
         maximum_tasks=-1,
         run_dependencies=False,
         path_mapping_rules=None,
+        environments=[],
         output="human-readable",
     )
     with pytest.raises(SystemExit):

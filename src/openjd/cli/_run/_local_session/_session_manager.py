@@ -10,6 +10,7 @@ from signal import signal, SIGINT, SIGTERM, SIG_DFL
 from ._actions import EnterEnvironmentAction, ExitEnvironmentAction, RunTaskAction, SessionAction
 from ._logs import LocalSessionLogHandler, LogEntry
 from openjd.model import (
+    EnvironmentTemplate,
     Job,
     ParameterValue,
     ParameterValueType,
@@ -49,6 +50,7 @@ class LocalSession:
     _current_action: Optional[SessionAction]
     _action_ended: Event
     _path_mapping_rules: Optional[list[PathMappingRule]]
+    _environments: Optional[list[EnvironmentTemplate]]
     _log_handler: LocalSessionLogHandler
     _cleanup_called: bool
 
@@ -58,6 +60,7 @@ class LocalSession:
         job: Job,
         session_id: str,
         path_mapping_rules: Optional[list[PathMappingRule]] = None,
+        environments: Optional[list[EnvironmentTemplate]] = None,
         should_print_logs: bool = True,
     ):
         self.session_id = session_id
@@ -65,6 +68,7 @@ class LocalSession:
         self._action_ended = Event()
         self._job = job
         self._path_mapping_rules = path_mapping_rules
+        self._environments = environments
 
         # Evaluate Job parameters, if applicable
         if job.parameters:
@@ -145,6 +149,11 @@ class LocalSession:
         self.ended.clear()
 
         session_environment_ids: list[str] = []
+        # Enqueue "Enter Environment" actions for the given environments
+        if self._environments:
+            envs = [environ.environment for environ in self._environments]
+            session_environment_ids += self._add_environments(envs)
+
         # Enqueue "Enter Environment" actions for root level environments
         if self._job.jobEnvironments:
             session_environment_ids += self._add_environments(self._job.jobEnvironments)

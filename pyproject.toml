@@ -8,9 +8,26 @@ dynamic = ["version"]
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
-
+description = "Provides a command-line interface for working with Open Job Description templates."
+# https://pypi.org/classifiers/
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "License :: OSI Approved :: Apache Software License",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop"
+]
 dependencies = [
-  "openjd-sessions == 0.3.*"
+  "openjd-sessions == 0.3.*",
+  "openjd-model == 0.2.*"
 ]
 
 [project.scripts]
@@ -142,3 +159,6 @@ source = [
 [tool.coverage.report]
 show_missing = true
 fail_under = 92
+omit= [
+  "src/openjd/cli/_version.py"
+]

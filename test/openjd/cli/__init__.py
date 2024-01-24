@@ -16,7 +16,14 @@ MOCK_TEMPLATE = {
             # Basic step; uses Job parameters and has an environment
             "name": "NormalStep",
             "script": {"actions": {"onRun": {"command": "echo", "args": ["{{Param.Message}}"]}}},
-            "stepEnvironments": [{"name": "env1", "variables": {"var1": "val1"}}],
+            "stepEnvironments": [
+                {
+                    "name": "env1",
+                    "script": {
+                        "actions": {"onEnter": {"command": "echo", "args": ["EnteringEnv"]}}
+                    },
+                }
+            ],
         },
         {
             # Step that will wait for one minute before completing its Task

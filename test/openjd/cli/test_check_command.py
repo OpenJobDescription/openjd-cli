@@ -36,26 +36,6 @@ def test_do_check_file_success(tempfile_extension: str, doc_serializer: Callable
     Path(temp_template.name).unlink()
 
 
-def test_do_check_bundle_success():
-    """
-    The CLI should be able to find a template JSON/YAML document in a provided directory
-    """
-    temp_template = None
-
-    with tempfile.TemporaryDirectory() as temp_bundle:
-        with tempfile.NamedTemporaryFile(
-            mode="w+t",
-            suffix=".template.json",
-            encoding="utf8",
-            delete=False,
-            dir=temp_bundle,
-        ) as temp_template:
-            json.dump(MOCK_TEMPLATE, temp_template.file)
-
-        mock_args = Namespace(path=Path(temp_bundle), output="human-readable")
-        do_check(mock_args)
-
-
 def test_do_check_file_error():
     """
     Raise a SystemExit on an error

@@ -78,6 +78,28 @@ def test_do_get_schema_success(capsys: pytest.CaptureFixture):
 
 
 @pytest.mark.usefixtures("capsys")
+def test_do_get_schema_success_environment(capsys: pytest.CaptureFixture):
+    """
+    Test that the `schema` command returns a correctly-formed
+    JSON body with specific Environment template attributes.
+    """
+    with patch(
+        "openjd.cli._schema._schema_command._process_regex", new=Mock(side_effect=_process_regex)
+    ) as patched_process_regex:
+        do_get_schema(
+            Namespace(version=SchemaVersion.ENVIRONMENT_v2023_09, output="human-readable")
+        )
+        patched_process_regex.assert_called()
+
+    model_output = capsys.readouterr().out
+    model_json = json.loads(model_output)
+
+    assert model_json is not None
+    assert model_json["title"] == "EnvironmentTemplate"
+    assert "specificationVersion" in model_json["properties"]
+
+
+@pytest.mark.usefixtures("capsys")
 def test_do_get_schema_incorrect_version(capsys: pytest.CaptureFixture):
     """
     Test that the `schema` command fails if an unsupported version string

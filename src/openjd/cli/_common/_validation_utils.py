@@ -1,14 +1,16 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-from argparse import Namespace
+from typing import Any
 from pathlib import Path
 
 from openjd.model import (
     DecodeValidationError,
     DocumentType,
+    EnvironmentTemplate,
     JobTemplate,
-    decode_template,
     document_string_to_object,
+    decode_environment_template,
+    decode_job_template,
 )
 
 
@@ -20,49 +22,60 @@ def get_doc_type(filepath: Path) -> DocumentType:
     raise RuntimeError(f"'{str(filepath)}' is not JSON or YAML.")
 
 
-def _find_template_in_directory(bundle_dir: Path) -> Path:
-    """Search a directory for a Job Template file,
-    stopping at the first instance of a `template.json` or `template.yaml` file in the top level."""
-    for file in bundle_dir.glob("*template.*"):
-        if file.is_file() and file.suffix.lower() in (".json", ".yaml", ".yml"):
-            return file
-
-    raise RuntimeError(
-        f"Couldn't find 'template.json' or 'template.yaml' in the folder '{str(bundle_dir)}'."
-    )
-
-
-def read_template(args: Namespace) -> tuple[Path, JobTemplate]:
+def read_template(template_file: Path) -> dict[str, Any]:
     """Open a JSON or YAML-formatted file and attempt to parse it into a JobTemplate object.
     Raises a RuntimeError if the file doesn't exist or can't be opened, and raises a
     DecodeValidationError if its contents can't be parsed into a valid JobTemplate.
     """
 
-    if not args.path.exists():
-        raise RuntimeError(f"'{str(args.path)}' does not exist.")
+    if not template_file.exists():
+        raise RuntimeError(f"'{str(template_file)}' does not exist.")
 
-    if args.path.is_file():
+    if template_file.is_file():
         # Raises: RuntimeError
-        filepath = args.path
-        filetype = get_doc_type(filepath)
-    elif args.path.is_dir():
-        # Raises: RuntimeError
-        filepath = _find_template_in_directory(args.path)
-        filetype = get_doc_type(filepath)
+        filetype = get_doc_type(template_file)
     else:
-        raise RuntimeError(f"'{str(args.path)}' is not a file or directory.")
+        raise RuntimeError(f"'{str(template_file)}' is not a file.")
 
     try:
-        template_string = filepath.read_text(encoding="utf-8")
+        template_string = template_file.read_text(encoding="utf-8")
     except OSError as exc:
-        raise RuntimeError(f"Could not open file '{str(filepath)}': {str(exc)}")
+        raise RuntimeError(f"Could not open file '{str(template_file)}': {str(exc)}")
 
     try:
+        # Raises: DecodeValidationError
         template_object = document_string_to_object(
             document=template_string, document_type=filetype
         )
-        template = decode_template(template=template_object)
     except DecodeValidationError as exc:
-        raise RuntimeError(f"'{str(filepath)}' failed checks: {str(exc)}")
+        raise RuntimeError(f"'{str(template_file)}' failed checks: {str(exc)}")
 
-    return filepath, template
+    return template_object
+
+
+def read_job_template(template_file: Path) -> JobTemplate:
+    """Open a JSON or YAML-formatted file and attempt to parse it into a JobTemplate object.
+    Raises a RuntimeError if the file doesn't exist or can't be opened, and raises a
+    DecodeValidationError if its contents can't be parsed into a valid JobTemplate.
+    """
+    # Raises RuntimeError
+    template_object = read_template(template_file)
+
+    # Raises: DecodeValidationError
+    template = decode_job_template(template=template_object)
+
+    return template
+
+
+def read_environment_template(template_file: Path) -> EnvironmentTemplate:
+    """Open a JSON or YAML-formatted file and attempt to parse it into an EnvironmentTemplate object.
+    Raises a RuntimeError if the file doesn't exist or can't be opened, and raises a
+    DecodeValidationError if its contents can't be parsed into a valid EnvironmentTemplate.
+    """
+    # Raises RuntimeError
+    template_object = read_template(template_file)
+
+    # Raises: DecodeValidationError
+    template = decode_environment_template(template=template_object)
+
+    return template
