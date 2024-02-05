@@ -479,11 +479,14 @@ def test_run_local_session_success(
             destination_path=PurePosixPath("/mnt/test"),
         )
     ]
-    with patch.object(
-        LocalSession, "initialize", autospec=True, side_effect=LocalSession.initialize
-    ) as patched_initialize, patch.object(
-        Session, "__init__", autospec=True, side_effect=Session.__init__
-    ) as patched_session_init:
+    with (
+        patch.object(
+            LocalSession, "initialize", autospec=True, side_effect=LocalSession.initialize
+        ) as patched_initialize,
+        patch.object(
+            Session, "__init__", autospec=True, side_effect=Session.__init__
+        ) as patched_session_init,
+    ):
         response = _run_local_session(
             job=sample_job,
             step_map=sample_step_map,

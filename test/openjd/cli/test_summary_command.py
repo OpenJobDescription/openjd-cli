@@ -75,9 +75,10 @@ def test_do_summary_error():
     Test that the `summary` command exits on any error (in this case, we mock an error in `read_template`)
     """
     mock_args = Namespace(path=Path("some-file.json"), output="human-readable")
-    with patch(
-        "openjd.cli._common.read_template", new=Mock(side_effect=RuntimeError())
-    ), pytest.raises(SystemExit):
+    with (
+        patch("openjd.cli._common.read_template", new=Mock(side_effect=RuntimeError())),
+        pytest.raises(SystemExit),
+    ):
         do_summary(mock_args)
 
 

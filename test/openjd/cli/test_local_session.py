@@ -23,15 +23,23 @@ def patched_actions():
     hang when mocking actions directly, so we just run the Session
     to completion with short sample Jobs)
     """
-    with patch.object(
-        Session, "enter_environment", autospec=True, side_effect=Session.enter_environment
-    ) as patched_enter, patch.object(
-        Session, "run_task", autospec=True, side_effect=Session.run_task
-    ) as patched_run, patch.object(
-        Session, "exit_environment", autospec=True, side_effect=Session.exit_environment
-    ) as patched_exit, patch.object(
-        LocalSession, "_action_callback", autospec=True, side_effect=LocalSession._action_callback
-    ) as patched_callback:
+    with (
+        patch.object(
+            Session, "enter_environment", autospec=True, side_effect=Session.enter_environment
+        ) as patched_enter,
+        patch.object(
+            Session, "run_task", autospec=True, side_effect=Session.run_task
+        ) as patched_run,
+        patch.object(
+            Session, "exit_environment", autospec=True, side_effect=Session.exit_environment
+        ) as patched_exit,
+        patch.object(
+            LocalSession,
+            "_action_callback",
+            autospec=True,
+            side_effect=LocalSession._action_callback,
+        ) as patched_callback,
+    ):
         yield patched_enter, patched_run, patched_exit, patched_callback
 
 
@@ -192,9 +200,10 @@ def test_localsession_run_not_ready(sample_job_and_dirs: tuple):
     """
     sample_job, template_dir, current_working_dir = sample_job_and_dirs
     with LocalSession(job=sample_job, session_id="my-session") as session:
-        with patch.object(Session, "state", new=SessionState.ENDED), pytest.raises(
-            RuntimeError
-        ) as rte:
+        with (
+            patch.object(Session, "state", new=SessionState.ENDED),
+            pytest.raises(RuntimeError) as rte,
+        ):
             session.run()
 
     assert "not in a READY state" in str(rte.value)
