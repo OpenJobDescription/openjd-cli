@@ -289,9 +289,9 @@ def output_summary_result(job: Job, step_name: str | None = None) -> OpenJDCliRe
                 message=f"Summary for Step '{step.name}' in Job '{job.name}'",
                 job_name=job.name,
                 step_name=step.name,
-                total_parameters=len(step.parameter_definitions)
-                if step.parameter_definitions
-                else 0,
+                total_parameters=(
+                    len(step.parameter_definitions) if step.parameter_definitions else 0
+                ),
                 parameter_definitions=step.parameter_definitions,
                 total_tasks=step.total_tasks,
                 total_environments=len(step.environments) if step.environments else 0,

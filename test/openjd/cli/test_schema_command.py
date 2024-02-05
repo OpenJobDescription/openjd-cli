@@ -120,8 +120,9 @@ def test_do_get_schema_error(capsys: pytest.CaptureFixture):
     when generating the JSON schema.
     """
 
-    with patch.object(BaseModel, "schema", side_effect=RuntimeError("Test error")), pytest.raises(
-        SystemExit
+    with (
+        patch.object(BaseModel, "schema", side_effect=RuntimeError("Test error")),
+        pytest.raises(SystemExit),
     ):
         do_get_schema(Namespace(version=SchemaVersion.v2023_09, output="human-readable"))
     output = capsys.readouterr().out
