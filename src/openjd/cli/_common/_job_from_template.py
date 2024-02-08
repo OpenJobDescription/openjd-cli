@@ -63,6 +63,7 @@ def get_job_params(parameter_args: list[str]) -> dict:
     """
     parameter_dict: dict = {}
     for arg in parameter_args:
+        arg = arg.strip()
         # Case 1: Provided argument is a filepath
         if arg.startswith("file://"):
             # Raises: RuntimeError
@@ -73,13 +74,30 @@ def get_job_params(parameter_args: list[str]) -> dict:
             else:
                 raise RuntimeError(f"Job parameter file '{arg}' should contain a dictionary.")
 
-        # Case 2: Provided argument is a Key=Value string
-        else:
-            regex_match = re.match("(.+)=(.*)", arg)
+        # Case 2: Provided as a JSON string
+        elif re.match("^{(.*)}$", arg):
+            try:
+                # Raises: JSONDecodeError
+                parameters = json.loads(arg)
+            except (json.JSONDecodeError, TypeError):
+                raise RuntimeError(
+                    f"Job parameter string ('{arg}') not formatted correctly. It must be key=value pairs, inline JSON, or a path to a JSON or YAML document prefixed with 'file://'."
+                )
+            if not isinstance(parameters, dict):
+                # This should never happen. Including it out of a sense of paranoia.
+                raise RuntimeError(
+                    f"Job parameter ('{arg}') must contain a dictionary mapping job parameters to their value."
+                )
+            parameter_dict.update(parameters)
 
-            if not regex_match:
-                raise RuntimeError(f"Job parameter '{arg}' should be in the format 'Key=Value'.")
+        # Case 3: Provided argument is a Key=Value string
+        elif regex_match := re.match("^(.+)=(.*)$", arg):
             parameter_dict.update({regex_match[1]: regex_match[2]})
+
+        else:
+            raise RuntimeError(
+                f"Job parameter string ('{arg}') not formatted correctly. It must be key=value pairs, inline JSON, or a path to a JSON or YAML document prefixed with 'file://'."
+            )
 
     return parameter_dict
 

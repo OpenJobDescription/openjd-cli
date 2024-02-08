@@ -58,7 +58,7 @@ Displays summary information about a sample Job or a Step therein. The user may 
 |Name|Type|Required|Description|Example|
 |---|---|---|---|---|
 |`path`|path|yes|A path leading to a Job template file.|`/path/to/job.template.json`|
-|`--job-param`, `-p`|string, path|no|A key-value pair representing a parameter in the template and the value to use for it, provided as a string or a path to a JSON/YAML document prefixed with 'file://'. Can be specified multiple times.|`--job-param MyParam=5`, `-p file://parameter_file.json`|
+|`--job-param`, `-p`|string, path|no|The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or a path to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear.|`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
 |`--step-name`|string|no|The name of the Step to summarize.|`--step-name Step1`|
 |`--output`|string|no|How to display the results of the command. Allowed values are `human-readable` (default), `json`, and `yaml`.|`--output json`, `--output yaml`|
 
@@ -66,7 +66,7 @@ Displays summary information about a sample Job or a Step therein. The user may 
 ```sh
 $ openjd-cli summary /path/to/job.template.json \
     --job-param JobName=SampleJob \
-    --job-param FileToRender=sample.blend \
+    --job-param '{"FileToRender": "sample.blend"}' \
     --job-param file://some_more_parameters.json
 
 --- Summary for 'SampleJob' ---
@@ -106,7 +106,7 @@ details on how Open Job Description's Jobs are run within Sessions.
 |`path`|path|yes|A path leading to a Job template file.|`/path/to/job.template.json`|
 |`--step-name`|string|yes|The name of the Step to run in a local Session.|`--step-name Step1`|
 |`--environment`|paths|no|Path to a file containing Environment Template definitions. Can be provided multiple times.|`--environment /path/to/env.template1.json --environment /path/to/env.template2.yaml`|
-|`--job-param`, `-p`|string, path|no|A key-value pair representing a parameter in the template and the value to use for it, provided as a string or a path to a JSON/YAML document prefixed with 'file://'. Can be specified multiple times.|`--job-param MyParam=5`, `-p file://parameter_file.json`|
+|`--job-param`, `-p`|string, path|no|The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or a path to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear.|`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
 |`--task-params`, `-tp`|string, path|no|A list of key-value pairs representing a Task parameter set for the Step, provided as a string or a path to a JSON/YAML document prefixed with 'file://'. If present, the Session will run one Task per parameter set supplied with `--task-params`. Can be specified multiple times.|`--task-params PingCount=20 PingDelay=30`, `-tp file://parameter_set_file.json`|
 |`--maximum-tasks`|integer|no|A maximum number of Tasks to run from this Step. Unless present, the Session will run all Tasks defined in the Step's parameter space, or one Task per `--task-params` argument.|`--maximum-tasks 5`|
 |`--run-dependencies`|flag|no|If present, runs all of a Step's dependencies in the Session prior to the Step itself.|`--run-dependencies`|

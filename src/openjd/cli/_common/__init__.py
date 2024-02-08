@@ -77,8 +77,12 @@ def add_common_arguments(
             dest="job_params",
             type=str,
             action="append",
-            metavar=("KEY=VALUE, file://PATH_TO_PARAMS"),
-            help="Use these Job parameters with the provided template. Can be provided as key-value pairs, or as path(s) to a JSON or YAML document prefixed with 'file://'.",
+            metavar=('KEY=VALUE, file://PATH_TO_PARAMS, \'{"KEY": "VALUE", ... }\''),
+            help=(
+                "Use these Job parameters with the provided template. Can be provided as key-value pairs, "
+                "path(s) to a JSON or YAML document prefixed with 'file://', or inline JSON. If this option "
+                "is provided more than once then the given values are all combined in the order that they appear."
+            ),
         )
 
 

@@ -185,6 +185,14 @@ def test_read_environment_template_parsingerror(tempfile_extension: str, file_co
         pytest.param(MOCK_PARAM_ARGUMENTS, MOCK_PARAM_VALUES, id="Params from key-value pair"),
         pytest.param(["file://TEMPDIR/params.json"], MOCK_PARAM_VALUES, id="Params from file"),
         pytest.param(
+            [json.dumps({"MyParam": "5"})], {"MyParam": "5"}, id="Params from json string"
+        ),
+        pytest.param(
+            [json.dumps({"MyParam": "Value=5"})],
+            {"MyParam": "Value=5"},
+            id="Params from json string",
+        ),
+        pytest.param(
             ["SomeParam=SomeValue", "file://TEMPDIR/params.json"],
             {"SomeParam": "SomeValue", "Title": "overwrite", "RequiredParam": "5"},
             id="Combination of KVP and file",
@@ -220,7 +228,7 @@ def test_get_job_params_success(mock_param_args: list[str], expected_param_value
             False,
             "",
             None,
-            "'bad format' should be in the format 'Key=Value'",
+            "Job parameter string ('bad format') not formatted correctly.",
             id="Badly-formatted parameter string",
         ),
         pytest.param(
@@ -272,7 +280,7 @@ def test_get_job_params_success(mock_param_args: list[str], expected_param_value
             ["file://bad-params.yaml"],
             True,
             True,
-            "bad-params.yaml",
+            "bad-params.json",
             lambda: '"bad":\n"yaml"',
             "is formatted incorrectly",
             id="Badly-formatted parameter file (YAML)",
@@ -285,6 +293,24 @@ def test_get_job_params_success(mock_param_args: list[str], expected_param_value
             lambda: '["not a dictionary"]',
             "should contain a dictionary",
             id="Non-dictionary file contents",
+        ),
+        pytest.param(
+            ["- not json -"],
+            False,
+            False,
+            "",
+            None,
+            "Job parameter string ('- not json -') not formatted correctly.",
+            id="Not JSON",
+        ),
+        pytest.param(
+            ['["a", "b"]'],
+            False,
+            False,
+            "",
+            None,
+            'Job parameter string (\'["a", "b"]\') not formatted correctly.',
+            id="JSON not dictionary",
         ),
     ],
 )
