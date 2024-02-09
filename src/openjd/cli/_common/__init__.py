@@ -12,7 +12,7 @@ import os
 from ._job_from_template import (
     job_from_template,
     get_job_params,
-    get_task_params,
+    get_params_from_file,
 )
 from ._validation_utils import (
     get_doc_type,
@@ -25,7 +25,7 @@ from openjd.model import DecodeValidationError, Job
 __all__ = [
     "get_doc_type",
     "get_job_params",
-    "get_task_params",
+    "get_params_from_file",
     "read_template",
     "read_job_template",
     "read_environment_template",

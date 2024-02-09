@@ -19,7 +19,6 @@ from . import (
 from openjd.cli._common import (
     generate_job,
     get_job_params,
-    get_task_params,
     read_template,
     read_job_template,
     read_environment_template,
@@ -183,6 +182,7 @@ def test_read_environment_template_parsingerror(tempfile_extension: str, file_co
     "mock_param_args,expected_param_values",
     [
         pytest.param(MOCK_PARAM_ARGUMENTS, MOCK_PARAM_VALUES, id="Params from key-value pair"),
+        pytest.param(["MyParam=One=Two"], {"MyParam": "One=Two"}, id="Param value with = in it"),
         pytest.param(["file://TEMPDIR/params.json"], MOCK_PARAM_VALUES, id="Params from file"),
         pytest.param(
             [json.dumps({"MyParam": "5"})], {"MyParam": "5"}, id="Params from json string"
@@ -422,142 +422,6 @@ def test_job_from_template_error(
         job_from_template(template, mock_params, template_dir, current_working_dir)
 
     assert expected_error in str(rte.value)
-
-
-@pytest.mark.parametrize(
-    "parameter_set_lists,file_contents,num_expected_parameter_sets",
-    [
-        pytest.param([["Param1=Value"], ["Param1=Value2"]], "", 2, id="Single KVPs"),
-        pytest.param(
-            [["Param1=A", "Param2=1"], ["Param1=B", "Param2=2"]],
-            "",
-            2,
-            id="Lists of KVPs",
-        ),
-        pytest.param(
-            [["file://TEMPDIR/some-file.json"]],
-            '{"Param1": "A", "Param2": 1}',
-            1,
-            id="File with single dictionary",
-        ),
-        pytest.param(
-            [["file://TEMPDIR/some-file.json"], ["file://TEMPDIR/actually-the-same-contents.json"]],
-            '{"Param1": "A", "Param2": 1}',
-            2,
-            id="Multiple files with single dictionary",
-        ),
-        pytest.param(
-            [["file://TEMPDIR/some-file.json"]],
-            '[{"Param1": "A", "Param2": 1}, {"Param1": "B", "Param2": 2}]',
-            2,
-            id="File with list of dictionaries",
-        ),
-        pytest.param(
-            [
-                ["Param1=A", "Param2=1"],
-                ["Param1=B", "Param2=2"],
-                ["file://TEMPDIR/some-file.json"],
-            ],
-            '[{"Param1": "E", "Param2": 5}]',
-            3,
-            id="Combination of formats",
-        ),
-    ],
-)
-def test_get_task_params_success(
-    parameter_set_lists: list[list[str]],
-    file_contents: str,
-    num_expected_parameter_sets: int,
-):
-    """
-    Test that Task parameters can be resolved from differently-formatted arguments.
-    """
-
-    # For each file argument, we create a file in a temporary directory to reference
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # No nice way around it; argument format demands a nested for-loop
-        for parameter_list in parameter_set_lists:
-            for i, file_arg in enumerate(parameter_list):
-                if file_arg.startswith("file://TEMPDIR/"):
-                    param_file = open(
-                        os.path.join(temp_dir, file_arg.removeprefix("file://TEMPDIR/")), "x"
-                    )
-                    param_file.write(file_contents)
-                    param_file.close()
-
-                    parameter_list[i] = file_arg.replace("TEMPDIR", temp_dir)
-
-        task_params = get_task_params(parameter_set_lists)
-
-        assert len(task_params) == num_expected_parameter_sets
-
-
-@pytest.mark.parametrize(
-    "parameter_set_lists,file_contents,expected_errors",
-    [
-        pytest.param(
-            [["badformat"]],
-            "",
-            ["should be in the format 'Key=Value'"],
-            id="Badly-formed KVP",
-        ),
-        pytest.param(
-            [["keyvalue", "Key=Value", "valuekey"]],
-            "",
-            [
-                "'keyvalue' should be in the format 'Key=Value'",
-                "'valuekey' should be in the format 'Key=Value'",
-            ],
-            id="Multiple badly-formed KVPs in same set",
-        ),
-        pytest.param(
-            [
-                ["Key=Value", "Key2=Value2"],
-                ["keyvalue", "valuekey"],
-                ["Key3=Value3", "anotherbadparam"],
-            ],
-            "",
-            [
-                "'keyvalue' should be in the format 'Key=Value'",
-                "'valuekey' should be in the format 'Key=Value'",
-                "'anotherbadparam' should be in the format 'Key=Value'",
-            ],
-            id="Badly-formed KVPs in multiple sets",
-        ),
-        pytest.param(
-            [["file://TEMPDIR/some-file.json"]],
-            '[["a list"], 5, "a string"]',
-            ["contains non-dictionary entries: [['a list'], 5, 'a string']"],
-            id="File containing non-dictionary parameters",
-        ),
-    ],
-)
-def test_get_task_params_error(
-    parameter_set_lists: list[list[str]],
-    file_contents: str,
-    expected_errors: list[str],
-):
-    """
-    Test that incorrectly-formatted Task parameters throw the expected errors.
-    """
-
-    # Create all files in a temporary directory so they are automatically cleaned up
-    with tempfile.TemporaryDirectory() as temp_dir:
-        for parameter_list in parameter_set_lists:
-            for i, file_arg in enumerate(parameter_list):
-                if file_arg.startswith("file://TEMPDIR/"):
-                    param_file = open(
-                        os.path.join(temp_dir, file_arg.removeprefix("file://TEMPDIR/")), "x"
-                    )
-                    param_file.write(file_contents)
-                    param_file.close()
-
-                    parameter_list[i] = file_arg.replace("TEMPDIR", temp_dir)
-
-        with pytest.raises(RuntimeError) as rte:
-            get_task_params(parameter_set_lists)
-
-        assert all([msg in str(rte.value) for msg in expected_errors])
 
 
 @pytest.mark.parametrize(

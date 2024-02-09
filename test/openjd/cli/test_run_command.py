@@ -6,7 +6,7 @@ from pathlib import Path, PureWindowsPath, PurePosixPath
 import tempfile
 import re
 import os
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 from unittest.mock import Mock, patch
@@ -16,9 +16,13 @@ from openjd.cli._run._run_command import (
     OpenJDRunResult,
     do_run,
     _run_local_session,
+    _process_task_params,
+    _process_tasks,
+    _validate_task_params,
 )
 from openjd.cli._run._local_session._session_manager import LocalSession
 from openjd.sessions import PathMappingRule, PathFormat, Session
+from openjd.model import decode_job_template, create_job, ParameterValue, ParameterValueType
 
 
 TEST_RUN_JOB_TEMPLATE_BASIC = {
@@ -182,7 +186,7 @@ TEST_RUN_ENV_TEMPLATE_2 = {
             TEST_RUN_JOB_TEMPLATE_BASIC,
             [],  # Env Templates
             "First",  # step name
-            [["Foo=1 Bar=Bar1"]],  # Task params
+            ["Foo=1", "Bar=Bar1"],  # Task params
             True,  # run_dependencies
             re.compile(
                 r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*FirstS Exit.*J2 Exit.*J1 Exit"
@@ -242,7 +246,7 @@ def test_do_run_success(
     job_template: dict[str, Any],
     env_templates: list[dict[str, Any]],
     step_name: str,
-    task_params: list[list[str]],
+    task_params: list[str],
     run_dependencies: bool,
     expected_output: re.Pattern[str],
     expected_not_in_output: str,
@@ -273,6 +277,7 @@ def test_do_run_success(
             step=step_name,
             job_params=["J=Jvalue"],
             task_params=task_params,
+            tasks=None,
             maximum_tasks=-1,
             run_dependencies=run_dependencies,
             path_mapping_rules=None,
@@ -360,6 +365,7 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
             step="TestStep",
             job_params=[r"TestPath=/home/test" if os.name == "posix" else r"TestPath=c:\test"],
             task_params=None,
+            tasks=None,
             run_dependencies=False,
             output="human-readable",
             path_mapping_rules="file://" + temp_rules.name,
@@ -403,6 +409,7 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
         step="FakeStep",
         job_params=None,
         task_params=None,
+        tasks=None,
         maximum_tasks=-1,
         run_dependencies=False,
         path_mapping_rules=None,
@@ -411,7 +418,10 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
     )
     with pytest.raises(SystemExit):
         do_run(mock_args)
-    assert "Step 'FakeStep' does not exist" in capsys.readouterr().out
+    assert (
+        "No Step with name 'FakeStep' is defined in the given Job Template."
+        in capsys.readouterr().out
+    )
 
     Path(temp_template.name).unlink()
 
@@ -544,3 +554,220 @@ def test_run_local_session_failed(
 
     assert response.status == "error"
     assert expected_error in response.message
+
+
+class TestProcessTaskParams:
+    """Testing that we properly handle the values of the --task-param/-tp
+    command-line argument"""
+
+    @pytest.mark.parametrize(
+        "given, expected",
+        [
+            pytest.param(["Foo=1"], {"Foo": "1"}, id="simple single"),
+            pytest.param(["Foo=One=Two"], {"Foo": "One=Two"}, id="value containing an = sign"),
+            pytest.param([" Foo=1 "], {"Foo": "1 "}, id="bracketting whitespace"),
+            pytest.param(["Foo = 1"], {"Foo ": " 1"}, id="internal whitespace"),
+            pytest.param(
+                ["Foo=1", "Bar=Buz"], {"Foo": "1", "Bar": "Buz"}, id="multiple parameters"
+            ),
+        ],
+    )
+    def test_success(self, given: list[str], expected: dict[str, str]) -> None:
+        # WHEN
+        result = _process_task_params(given)
+
+        # THEN
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "given, expected_error",
+        [
+            pytest.param(
+                ["Foo1"], "Task parameter 'Foo1' defined incorrectly.", id="regex mismatch"
+            ),
+            pytest.param(
+                ["Foo=1", "Foo=2"],
+                "Task parameter 'Foo' has been defined more than once.",
+                id="duplicate definition",
+            ),
+        ],
+    )
+    def test_error(self, given: list[str], expected_error: str) -> None:
+        # WHEN
+        with pytest.raises(RuntimeError, match=expected_error):
+            _process_task_params(given)
+
+
+class TestProcessTasks:
+    """Testing that we properly handle the value of the --tasks command-line argument."""
+
+    @pytest.mark.parametrize(
+        "given, file_contents, expected",
+        [
+            pytest.param(
+                "file://TEMPDIR/some-file.json",
+                '[{"Param1": "A", "Param2": 1}]',
+                [{"Param1": "A", "Param2": "1"}],
+                id="json file; one task",
+            ),
+            pytest.param(
+                "file://TEMPDIR/some-file.yaml",
+                '- Param1: "A"\n  Param2: 1\n',
+                [{"Param1": "A", "Param2": "1"}],
+                id="yaml file",
+            ),
+            pytest.param(
+                "file://TEMPDIR/some-file.json",
+                '[{"Param1": "A", "Param2": 1},{"Param1": "B", "Param2": 2}]',
+                [{"Param1": "A", "Param2": "1"}, {"Param1": "B", "Param2": "2"}],
+                id="json file; two tasks",
+            ),
+            pytest.param(
+                '[{"Param1": "A", "Param2": 1}]',
+                None,
+                [{"Param1": "A", "Param2": "1"}],
+                id="inline json; one task",
+            ),
+            pytest.param(
+                '[{"Param1": "A", "Param2": 1},{"Param1": "B", "Param2": 2}]',
+                None,
+                [{"Param1": "A", "Param2": "1"}, {"Param1": "B", "Param2": "2"}],
+                id="inline json; two tasks",
+            ),
+            pytest.param('[{"Param": "A"}]', None, [{"Param": "A"}], id="param value str->str"),
+            pytest.param('[{"Param": 12}]', None, [{"Param": "12"}], id="param value int->str"),
+            pytest.param(
+                '[{"Param": 12.2}]', None, [{"Param": "12.2"}], id="param value float->str"
+            ),
+        ],
+    )
+    def test_success(
+        self, given: str, file_contents: Optional[str], expected: dict[str, str]
+    ) -> None:
+        # GIVEN
+        with tempfile.TemporaryDirectory() as temp_dir:
+            if given.startswith("file://TEMPDIR"):
+                assert file_contents is not None
+                filename = os.path.join(temp_dir, given.removeprefix("file://TEMPDIR/"))
+                with open(filename, "w") as param_file:
+                    param_file.write(file_contents)
+                given = "file://" + filename
+
+            # WHEN
+            result = _process_tasks(given)
+
+            # THEN
+            assert result == expected
+
+    @pytest.mark.parametrize(
+        "given, file_contents, expected_error",
+        [
+            pytest.param(
+                "file://TEMPDIR/some-file.json",
+                "}not json",
+                "Parameter file.+is formatted incorrectly",
+                id="not json",
+            ),
+            pytest.param(
+                "file://TEMPDIR/some-file.yaml",
+                "}not yaml",
+                "Parameter file.+is formatted incorrectly",
+                id="not yaml",
+            ),
+            pytest.param(
+                '{"Param": "A"}',
+                None,
+                "argument must be a list of maps from string to string when decoded",
+                id="not a list",
+            ),
+            pytest.param(
+                "[1,2,3]",
+                None,
+                "argument must be a list of maps from string to string when decoded",
+                id="not a list of dicts",
+            ),
+            pytest.param(
+                '[{"Param": [1,2]}]',
+                None,
+                "argument must be a list of maps from string to string when decoded",
+                id="value not scalar",
+            ),
+        ],
+    )
+    def test_error(self, given: str, file_contents: Optional[str], expected_error: str) -> None:
+        # GIVEN
+        with tempfile.TemporaryDirectory() as temp_dir:
+            if given.startswith("file://TEMPDIR"):
+                assert file_contents is not None
+                filename = os.path.join(temp_dir, given.removeprefix("file://TEMPDIR/"))
+                with open(filename, "w") as param_file:
+                    param_file.write(file_contents)
+                given = "file://" + filename
+
+            with pytest.raises(RuntimeError, match=expected_error):
+                _process_tasks(given)
+
+
+class TestValidateTaskParams:
+
+    @pytest.mark.parametrize(
+        "given",
+        [
+            pytest.param([{"Foo": "1", "Bar": "Bar1"}], id="one task, all params defined"),
+            pytest.param(
+                [{"Foo": "1", "Bar": "Bar1"}, {"Foo": "1", "Bar": "Bar1"}], id="two tasks"
+            ),
+        ],
+    )
+    def test_success(self, given: list[dict[str, str]]) -> None:
+        # GIVEN
+        job_template = decode_job_template(template=TEST_RUN_JOB_TEMPLATE_BASIC)
+        job = create_job(
+            job_template=job_template,
+            job_parameter_values={
+                "J": ParameterValue(type=ParameterValueType.STRING, value="Jvalue")
+            },
+        )
+        step = job.steps[0]
+
+        # THEN
+        # Does not raise
+        _validate_task_params(step, given)
+
+    @pytest.mark.parametrize(
+        "given, expected_error",
+        [
+            pytest.param(
+                [{"Bar": "Bar1"}], "Task 0 is missing values for parameters: Foo", id="missing Foo"
+            ),
+            pytest.param(
+                [{"Bar": "Bar1"}, {"Foo": "1"}],
+                "Task 0 is missing values for parameters: Foo.*\n.*Task 1 is missing values for parameters: Bar",
+                id="missing Foo & Bar; separate tasks",
+            ),
+            pytest.param(
+                [{"Foo": "1", "Bar": "Bar1", "Baz": "wut"}],
+                "Task 0 defines unknown parameters: Baz",
+                id="extra parameter",
+            ),
+            pytest.param(
+                [{"Bar": "Bar1", "Baz": "wut"}],
+                "Task 0 defines unknown parameters: Baz.*\n.*Task 0 is missing values for parameters: Foo",
+                id="missing & extra parameter",
+            ),
+        ],
+    )
+    def test_errors(self, given: list[dict[str, str]], expected_error: str) -> None:
+        # GIVEN
+        job_template = decode_job_template(template=TEST_RUN_JOB_TEMPLATE_BASIC)
+        job = create_job(
+            job_template=job_template,
+            job_parameter_values={
+                "J": ParameterValue(type=ParameterValueType.STRING, value="Jvalue")
+            },
+        )
+        step = job.steps[0]
+
+        # THEN
+        with pytest.raises(RuntimeError, match=expected_error):
+            _validate_task_params(step, given)
