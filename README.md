@@ -2,7 +2,7 @@
 
 Open Job Description (OpenJD) is a flexible open specification for defining render jobs which are portable
 between studios and render solutions. This package provides a command-line interface that can be used
-to: Verifiy that OpenJD templates are syntactically correct; Run OpenJD jobs locally; and more.
+to validate OpenJD templates, run OpenJD jobs locally, and more.
 
 For more information about Open Job Description and our goals with it, please see the
 Open Job Description [Wiki on GitHub](https://github.com/OpenJobDescription/openjd-specifications/wiki).
@@ -20,11 +20,13 @@ This library requires:
 
 ## Versioning
 
-This package's version follows [Semantic Versioning 2.0](https://semver.org/).
+This package's version follows [Semantic Versioning 2.0](https://semver.org/), but is still considered to be in its 
+initial development, thus backwards incompatible versions are denoted by minor version bumps. To help illustrate how
+versions will increment during this initial development stage, they are described below:
 
-1. The MAJOR version is currently 0.
-2. The MINOR version is incremented when backwards incompatible changes are introduced to the public API.
-3. The PATCH version is incremented when bug fixes or backwards compatible changes are introduced to the public API.
+1. The MAJOR version is currently 0, indicating initial development. 
+2. The MINOR version is currently incremented when backwards incompatible changes are introduced to the public API. 
+3. The PATCH version is currently incremented when bug fixes or backwards compatible changes are introduced to the public API. 
 
 ## Commands
 
@@ -34,7 +36,8 @@ The main `openjd` command and all subcommands support a `--help` option to displ
 information on how to use the command.
 
 ### `check`
-Reports any syntax errors that appear in the schema of a Job Template file.
+
+Validates, or reports any syntax errors that appear in the schema of a Job Template file.
 
 #### Arguments
 
@@ -51,16 +54,18 @@ Template at '/path/to/job.template.json' passes validation checks!
 ```
 
 ### `summary`
-Displays summary information about a sample Job or a Step therein. The user may provide parameters to customize the Job.
+
+Displays summary information about a sample Job or Step, and the Steps and Tasks therein. The user may provide parameters to 
+customize the Job, as parameters can have an impact on the amount of Steps and Tasks that a job consists of.
 
 #### Arguments
 
-|Name|Type|Required|Description|Example|
-|---|---|---|---|---|
-|`path`|path|yes|A path leading to a Job template file.|`/path/to/job.template.json`|
-|`--job-param`, `-p`|string, path|no|The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or a path to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear.|`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
-|`--step-name`|string|no|The name of the Step to summarize.|`--step-name Step1`|
-|`--output`|string|no|How to display the results of the command. Allowed values are `human-readable` (default), `json`, and `yaml`.|`--output json`, `--output yaml`|
+|Name|Type|Required| Description                                                                                                                                                                                                                               |Example|
+|---|---|---|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
+|`path`|path|yes| A path leading to a Job template file.                                                                                                                                                                                                    |`/path/to/job.template.json`|
+|`--job-param`, `-p`|string, path|no| The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or path(s) to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear. |`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
+|`--step-name`|string|no| The name of the Step to summarize.                                                                                                                                                                                                        |`--step-name Step1`|
+|`--output`|string|no| How to display the results of the command. Allowed values are `human-readable` (default), `json`, and `yaml`.                                                                                                                             |`--output json`, `--output yaml`|
 
 #### Example
 ```sh
@@ -101,17 +106,17 @@ details on how Open Job Description's Jobs are run within Sessions.
 
 #### Arguments
 
-|Name|Type|Required|Description|Example|
-|---|---|---|---|---|
-|`path`|path|yes|A path leading to a Job template file.|`/path/to/job.template.json`|
-|`--step-name`|string|yes|The name of the Step to run in a local Session.|`--step-name Step1`|
-|`--environment`|paths|no|Path to a file containing Environment Template definitions. Can be provided multiple times.|`--environment /path/to/env.template1.json --environment /path/to/env.template2.yaml`|
-|`--job-param`, `-p`|string, path|no|The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or a path to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear.|`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
-|`--task-params`, `-tp`|string, path|no|A list of key-value pairs representing a Task parameter set for the Step, provided as a string or a path to a JSON/YAML document prefixed with 'file://'. If present, the Session will run one Task per parameter set supplied with `--task-params`. Can be specified multiple times.|`--task-params PingCount=20 PingDelay=30`, `-tp file://parameter_set_file.json`|
-|`--maximum-tasks`|integer|no|A maximum number of Tasks to run from this Step. Unless present, the Session will run all Tasks defined in the Step's parameter space, or one Task per `--task-params` argument.|`--maximum-tasks 5`|
-|`--run-dependencies`|flag|no|If present, runs all of a Step's dependencies in the Session prior to the Step itself.|`--run-dependencies`|
-|`--path-mapping-rules`|string, path|no|The path mapping rules to apply to the template. Should be a JSON-formatted list of Open Job Description path mapping rules, provided as a string or a path to a JSON/YAML document prefixed with 'file://'.|`--path-mapping-rules [{"source_os": "Windows", "source_path": "C:\test", "destination_path": "/mnt/test"}]`, `--path-mapping-rules file://rules_file.json`|
-|`--output`|string|no|How to display the results of the command. Allowed values are `human-readable` (default), `json`, and `yaml`.|`--output json`, `--output yaml`|
+|Name|Type|Required| Description                                                                                                                                                                                                                                                                           |Example|
+|---|---|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
+|`path`|path|yes| A path leading to a Job template file.                                                                                                                                                                                                                                                |`/path/to/job.template.json`|
+|`--step-name`|string|yes| The name of the Step to run in a local Session.                                                                                                                                                                                                                                       |`--step-name Step1`|
+|`--environment`|paths|no| Path to a file containing Environment Template definitions. Can be provided multiple times.                                                                                                                                                                                           |`--environment /path/to/env.template1.json --environment /path/to/env.template2.yaml`|
+|`--job-param`, `-p`|string, path|no| The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or as path(s) to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear.                                          |`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
+|`--task-params`, `-tp`|string, path|no| A list of key-value pairs representing a Task parameter set for the Step, provided as a string or a path to a JSON/YAML document prefixed with 'file://'. If present, the Session will run one Task per parameter set supplied with `--task-params`. Can be specified multiple times. |`--task-params PingCount=20 PingDelay=30`, `-tp file://parameter_set_file.json`|
+|`--maximum-tasks`|integer|no| A maximum number of Tasks to run from this Step. Unless present, the Session will run all Tasks defined in the Step's parameter space, or one Task per `--task-params` argument.                                                                                                      |`--maximum-tasks 5`|
+|`--run-dependencies`|flag|no| If present, runs all of a Step's dependencies in the Session prior to the Step itself.                                                                                                                                                                                                |`--run-dependencies`|
+|`--path-mapping-rules`|string, path|no| The path mapping rules to apply to the template. Should be a JSON-formatted list of Open Job Description path mapping rules, provided as a string or a path to a JSON/YAML document prefixed with 'file://'.                                                                          |`--path-mapping-rules [{"source_os": "Windows", "source_path": "C:\test", "destination_path": "/mnt/test"}]`, `--path-mapping-rules file://rules_file.json`|
+|`--output`|string|no| How to display the results of the command. Allowed values are `human-readable` (default), `json`, and `yaml`.                                                                                                                                                                         |`--output json`, `--output yaml`|
 
 #### Example
 ```sh
