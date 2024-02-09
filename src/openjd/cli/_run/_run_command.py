@@ -5,16 +5,23 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 from typing import Optional
+import re
 
 from ._local_session._session_manager import LocalSession, LogEntry
 from .._common import (
     OpenJDCliResult,
     generate_job,
-    get_task_params,
+    get_params_from_file,
     print_cli_result,
     read_environment_template,
 )
-from openjd.model import DecodeValidationError, EnvironmentTemplate, Job, Step
+from openjd.model import (
+    DecodeValidationError,
+    EnvironmentTemplate,
+    Job,
+    Step,
+    StepParameterSpaceIterator,
+)
 from openjd.sessions import PathMappingRule
 
 
@@ -52,23 +59,42 @@ def add_run_arguments(run_parser: ArgumentParser):
         metavar="STEP_NAME",
         help="The name of the Step in the Job to run Tasks from.",
     )
-    run_parser.add_argument(
-        "--task-params",
+    group = run_parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--task-param",
         "-tp",
         action="append",
-        nargs="*",
         type=str,
-        metavar=("PARAM1=VALUE1 PARAM2=VALUE2"),
-        help="Use these Task parameter sets to run the provided Step. Can be provided as a list of key-value pairs, or as a path to a JSON/YAML document prefixed with 'file://'. \
-            Each non-file argument represents a single Task parameter set, as a list of Key=Value strings, to run a Task with. \
-            Sessions will run one Task per non-file argument, and any Tasks defined in 'file://'-prefixed JSON or YAML documents.",
+        dest="task_params",
+        metavar="PARAM=VALUE",
+        help=(
+            "This argument instructs the command to run a single task in a Session with the given value for one of the task parameters "
+            "defined for the Step. The option must be provided once for each task parameter defined for the Step, with each instance "
+            "providing the value for a different task parameter. Mutually exclusive with --tasks and --maximum-tasks."
+        ),
     )
-    run_parser.add_argument(
+    group.add_argument(
+        "--tasks",
+        action="store",
+        type=str,
+        dest="tasks",
+        metavar='file://tasks.json OR file://tasks.yaml OR [{"Param": "Value1", ...}, {"Param": "Value2", ...}]',
+        help=(
+            "This argument instructs the command to run one or more tasks for the Step in a Session. The argument must be either "
+            "the filename of a JSON or YAML file containing an array of maps from task parameter name to value; or an inlined "
+            "JSON string of the same. Mutually exclusive with --task-param/-tp and --maximum-tasks."
+        ),
+    )
+    group.add_argument(
         "--maximum-tasks",
         action="store",
         type=int,
         default=-1,
-        help="The maximum number of Task parameter sets to run this Step with. If unset, the Session will run all of the Step's defined Tasks, or one Task per Task parameter set provided by '--task-params'.",
+        help=(
+            "This argument instructs the command to run at most this many Tasks for the Step in the Session. If neither this "
+            "argument, --task-param/-tp, nor --tasks are provided then the Session will run all of the selected Step's Tasks "
+            "in the Session. Mutually exclusive with --task-param/-tp and --tasks."
+        ),
     )
     run_parser.add_argument(
         "--run-dependencies",
@@ -129,6 +155,139 @@ def _collect_required_steps(step_map: dict[str, Step], step: Step) -> list[Step]
     required_steps.append(step)
 
     return required_steps
+
+
+def _process_task_params(arguments: list[str]) -> dict[str, str]:
+    """
+    Retrieves a single Task parameter set from the user-provided --task-param option.
+
+    Args:
+        argument (list[str]): Each item is the definition of a single task parameter's
+            value for the task that is expected to be of the form "ParamName=Value" (we
+            do validate that the form has been used in this function).
+
+    Returns: A dictionary representing the task parameter set for a single task. All
+       values are represented as strings regardless of the parameter's defined type
+      (types are resolved later by the `sessions` module).
+
+    Raises:
+        RuntimeError if any arguments do not match the required pattern
+    """
+    parameter_set = dict[str, str]()
+
+    error_list: list[str] = []
+    for arg in arguments:
+        arg = arg.lstrip()
+        if regex_match := re.match("([^=]+)=(.+)", arg):
+            param, value = regex_match[1], regex_match[2]
+            if parameter_set.get(param) is not None:
+                error_list.append(f"Task parameter '{param}' has been defined more than once.")
+            else:
+                parameter_set[param] = value
+            pass
+        else:
+            error_list.append(
+                f"Task parameter '{arg}' defined incorrectly. Expected '<NAME>=<VALUE>' format."
+            )
+
+    if error_list:
+        error_msg = "Found the following errors collecting Task parameters:"
+        for error in error_list:
+            error_msg += f"\n- {error}"
+        raise RuntimeError(error_msg)
+
+    return parameter_set
+
+
+def _process_tasks(argument: str) -> list[dict[str, str]]:
+    """
+    Retrieves a list of parameter sets from the user-provided --tasks argument on the command-line.
+
+    Args:
+        argument (str): The definition of the collection of task parameter sets to run in the Session.
+            Correct user-input must of one of the following forms (we validate that here):
+                - file://<filename>.[json|yaml]
+                  - The file contains a JSON/YAML document that defines an array of parameter sets. Each
+                    parameter set is defined as a mapping from parameter name to parameter value.
+                - <JSON-encoded string>
+                    - The string contains a JSON document that defines an array of parameter sets. Each
+                      parameter set is defined as a mapping from parameter name to parameter value.
+
+    Returns:
+        list[dict[str,str]]: Each dictionary representing the task parameter set for a single task.
+            All values are represented as strings regardless of the parameter's defined type
+            (types are resolved later by the `sessions` module).
+
+    Raises:
+        RuntimeError if any arguments do not match the required pattern, or fail to parse
+    """
+    argument = argument.strip()
+    if argument.startswith("file://"):
+        # Raises: RuntimeError
+        parameter_sets = get_params_from_file(argument)
+    else:
+        try:
+            parameter_sets = json.loads(argument)
+        except (json.JSONDecodeError, TypeError):
+            raise RuntimeError(
+                "--task argument must be a JSON encoded list of maps or a string with the file:// prefix."
+            )
+
+    # Ensure that the type is what we expected -- a list[dict[str,str]]
+    if not isinstance(parameter_sets, list):
+        raise RuntimeError(
+            "--task argument must be a list of maps from string to string when decoded."
+        )
+    for item in parameter_sets:
+        if not isinstance(item, dict):
+            raise RuntimeError(
+                "--task argument must be a list of maps from string to string when decoded."
+            )
+        for param, value in item.items():
+            if not isinstance(value, (str, int, float)):
+                raise RuntimeError(
+                    "--task argument must be a list of maps from string to string when decoded."
+                )
+            item[param] = str(value)
+
+    return parameter_sets
+
+
+def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None:
+    # For each task parameter set, verify:
+    #  1) There are no parameters defined that don't exist in the template.
+    #  2) That all parameters that are defined in the Step are defined in the parameter set.
+    #  3) [TODO] That the given parameter set is actually in the parameter space of the Step.
+    #       - We need openjd.model.StepParameterSpaceIterator to have a membership test first to be able to do
+    #         this last check.
+
+    # Collect the names of all of the task parameters defined in the step.
+    if step.parameterSpace is not None:
+        parameter_space = StepParameterSpaceIterator(space=step.parameterSpace)
+        task_parameter_names: set[str] = set(parameter_space.names)
+    else:
+        task_parameter_names = set[str]()
+
+    error_list = list[str]()
+    for i, parameter_set in enumerate(task_params):
+        defined_params = set(parameter_set.keys())
+        if defined_params == task_parameter_names:
+            continue
+        extra_names = defined_params.difference(task_parameter_names)
+        missing_names = task_parameter_names.difference(defined_params)
+        if extra_names:
+            error_list.append(
+                f"Task {i} defines unknown parameters: {', '.join(sorted(extra_names))}"
+            )
+        if missing_names:
+            error_list.append(
+                f"Task {i} is missing values for parameters: {', '.join(sorted(missing_names))}"
+            )
+
+    if error_list:
+        error_msg = "Errors defining task parameter values:\n - "
+        error_msg += "\n - ".join(error_list)
+        raise RuntimeError(error_msg)
 
 
 def _run_local_session(
@@ -240,31 +399,36 @@ def do_run(args: Namespace) -> OpenJDCliResult:
 
     try:
         # Raises: RuntimeError
-        sample_job = generate_job(args)
+        the_job = generate_job(args)
 
-        task_params: list[dict] = []
+        # Map Step names to Step objects so they can be easily accessed
+        step_map = {step.name: step for step in the_job.steps}
+
+        if args.step not in step_map:
+            raise RuntimeError(
+                f"No Step with name '{args.step}' is defined in the given Job Template."
+            )
+
+        task_params: list[dict[str, str]] = []
         if args.task_params:
-            task_params = get_task_params(args.task_params)
+            task_params = [_process_task_params(args.task_params)]
+        elif args.tasks:
+            task_params = _process_tasks(args.tasks)
+
+        print(step_map[args.step])
+        _validate_task_params(step_map[args.step], task_params)
 
     except RuntimeError as rte:
         return OpenJDCliResult(status="error", message=str(rte))
 
-    # Map Step names to Step objects so they can be easily accessed
-    step_map = {step.name: step for step in sample_job.steps}
-
-    if args.step in step_map:
-        return _run_local_session(
-            job=sample_job,
-            step_map=step_map,
-            step=step_map[args.step],
-            task_parameter_values=task_params,
-            maximum_tasks=args.maximum_tasks,
-            environments=environments,
-            path_mapping_rules=path_mapping_rules,
-            should_run_dependencies=(args.run_dependencies),
-            should_print_logs=(args.output == "human-readable"),
-        )
-
-    return OpenJDCliResult(
-        status="error", message=f"Step '{args.step}' does not exist in Job '{sample_job.name}'."
+    return _run_local_session(
+        job=the_job,
+        step_map=step_map,
+        step=step_map[args.step],
+        task_parameter_values=task_params,
+        maximum_tasks=args.maximum_tasks,
+        environments=environments,
+        path_mapping_rules=path_mapping_rules,
+        should_run_dependencies=(args.run_dependencies),
+        should_print_logs=(args.output == "human-readable"),
     )

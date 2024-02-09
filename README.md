@@ -112,8 +112,9 @@ details on how Open Job Description's Jobs are run within Sessions.
 |`--step-name`|string|yes| The name of the Step to run in a local Session.                                                                                                                                                                                                                                       |`--step-name Step1`|
 |`--environment`|paths|no| Path to a file containing Environment Template definitions. Can be provided multiple times.                                                                                                                                                                                           |`--environment /path/to/env.template1.json --environment /path/to/env.template2.yaml`|
 |`--job-param`, `-p`|string, path|no| The values for the job template's parameters. Can be provided as key-value pairs, inline JSON string, or as path(s) to a JSON or YAML document. If provided more than once then the given values are combined in the order that they appear.                                          |`--job-param MyParam=5`, `-p file://parameter_file.json`, `-p '{"MyParam": "5"}'`|
-|`--task-params`, `-tp`|string, path|no| A list of key-value pairs representing a Task parameter set for the Step, provided as a string or a path to a JSON/YAML document prefixed with 'file://'. If present, the Session will run one Task per parameter set supplied with `--task-params`. Can be specified multiple times. |`--task-params PingCount=20 PingDelay=30`, `-tp file://parameter_set_file.json`|
-|`--maximum-tasks`|integer|no| A maximum number of Tasks to run from this Step. Unless present, the Session will run all Tasks defined in the Step's parameter space, or one Task per `--task-params` argument.                                                                                                      |`--maximum-tasks 5`|
+|`--task-params`, `-tp`|string|no| Instructs the command to run a single task in a Session with the given value for one of the task parameters. The option must be provided once for each task parameter defined for the Step, with each instance providing the value for a different task parameter. Mutually exclusive with `--tasks` and `--maximum-tasks`. |`-tp MyParam=5 -tp MyOtherParam=Foo`|
+|`--tasks`|string, path|no| Instructs the command to run one or more tasks for the Step in a Session. The argument must be either the filename of a JSON or YAML file containing an array of maps from task parameter name to value; or an inlined JSON string of the same. Mutually exclusive with `--task-param/-tp` and `--maximum-tasks`. |`--tasks '[{"MyParam": 5}]'`, `--tasks file://parameter_set_file.json`|
+|`--maximum-tasks`|integer|no| A maximum number of Tasks to run from this Step. Unless present, the Session will run all Tasks defined in the Step's parameter space or the Task(s) selected by the `--task-params` or `--tasks` arguments. Mutually exclusive with `--task-param/-tp` and `--tasks`. |`--maximum-tasks 5`|
 |`--run-dependencies`|flag|no| If present, runs all of a Step's dependencies in the Session prior to the Step itself.                                                                                                                                                                                                |`--run-dependencies`|
 |`--path-mapping-rules`|string, path|no| The path mapping rules to apply to the template. Should be a JSON-formatted list of Open Job Description path mapping rules, provided as a string or a path to a JSON/YAML document prefixed with 'file://'.                                                                          |`--path-mapping-rules [{"source_os": "Windows", "source_path": "C:\test", "destination_path": "/mnt/test"}]`, `--path-mapping-rules file://rules_file.json`|
 |`--output`|string|no| How to display the results of the command. Allowed values are `human-readable` (default), `json`, and `yaml`.                                                                                                                                                                         |`--output json`, `--output yaml`|
@@ -122,9 +123,8 @@ details on how Open Job Description's Jobs are run within Sessions.
 ```sh
 $ openjd-cli run /path/to/job.template.json --step Step1 \
     --job-param PingServer=amazon.com \
-    --task-params PingCount=20 PingDelay=30 \
-    --task-params file://some_task_parameter_set.json
-    --maximum-tasks 5
+    --task-params PingCount=20 \
+    --task-params PingDelay=30
 
 # ... Task logs accompanied by timestamps ...
 
@@ -134,7 +134,7 @@ Session ended successfully
 Job: MyJob
 Step: Step1
 Duration: 1.0 seconds
-Tasks run: 5
+Tasks run: 1
 
 ```
 

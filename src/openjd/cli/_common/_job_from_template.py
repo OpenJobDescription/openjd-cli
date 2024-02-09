@@ -91,7 +91,7 @@ def get_job_params(parameter_args: list[str]) -> dict:
             parameter_dict.update(parameters)
 
         # Case 3: Provided argument is a Key=Value string
-        elif regex_match := re.match("^(.+)=(.*)$", arg):
+        elif regex_match := re.match("^([^=]+)=(.*)$", arg):
             parameter_dict.update({regex_match[1]: regex_match[2]})
 
         else:
@@ -100,81 +100,6 @@ def get_job_params(parameter_args: list[str]) -> dict:
             )
 
     return parameter_dict
-
-
-def get_task_params(arguments: list[list[str]]) -> list[dict[str, str]]:
-    """
-    Retrieves Task parameter sets from user-provided command line arguments.
-    Each argument may be a list of Task parameters that forms
-    the parameter set, or a file containing the Task parameter set(s) to use.
-
-    For example, the arguments `["Param1=1 Param2=String1", "Param1=2 Param2=String2"]` will produce the following output:
-    ```
-    [
-        {
-            "Param1": "1",
-            "Param2": "String1"
-        },
-        {
-            "Param1": "2",
-            "Param2": "String2"
-        }
-    ]
-    ```
-
-    Returns: A list of dictionaries, with each dictionary representing a
-    Task parameter set. All values are represented as strings regardless
-    of the parameter's defined type (types are resolved later by the
-    `sessions` module).
-
-    Raises: RuntimeError if filepaths can't be resolved or if arguments
-    can't be serialized into dictionary objects.
-    """
-    all_parameter_sets: list[dict] = []
-
-    error_list: list[str] = []
-    for arg_list in arguments:
-        # Case 1: Provided argument is a filepath
-        if len(arg_list) == 1 and arg_list[0].startswith("file://"):
-            filename = arg_list[0]
-            # Raises: RuntimeError
-            file_parameters = get_params_from_file(filename)
-            # If the file contains a dictionary, add it as-is
-            if isinstance(file_parameters, dict):
-                all_parameter_sets.append(file_parameters)
-
-            # If not, the file is a list; check if the list only contains dictionaries,
-            # with a proper error message if not
-            elif not all([isinstance(entry, dict) for entry in file_parameters]):
-                error_list.append(
-                    f"'{filename.removeprefix('file://')}' contains non-dictionary entries: {[entry for entry in file_parameters if not isinstance(entry, dict)]}"
-                )
-
-            # If not, all entries are dictionaries; add them to the parameter sets
-            else:
-                all_parameter_sets.extend(file_parameters)
-
-        # Case 2: Provided argument is a list of Key=Value strings
-        else:
-            parameter_set: dict = {}
-
-            for kvp in arg_list:
-                regex_match = re.match("(.+)=(.+)", kvp.strip())
-                if not regex_match:
-                    error_list.append(f"'{kvp}' should be in the format 'Key=Value'")
-                else:
-                    parameter_set.update({regex_match[1]: regex_match[2]})
-
-            if parameter_set:
-                all_parameter_sets.append(parameter_set)
-
-    if error_list:
-        error_msg = "Found the following errors collecting Task parameters:"
-        for error in error_list:
-            error_msg += f"\n- {error}"
-        raise RuntimeError(error_msg)
-
-    return all_parameter_sets
 
 
 def job_from_template(
