@@ -12,6 +12,7 @@ from ._logs import LocalSessionLogHandler, LogEntry
 from openjd.model import (
     EnvironmentTemplate,
     Job,
+    JobParameterValues,
     ParameterValue,
     ParameterValueType,
     Step,
@@ -23,7 +24,6 @@ from openjd.sessions import (
     LOG,
     ActionState,
     ActionStatus,
-    Parameter,
     Session,
     SessionState,
     PathMappingRule,
@@ -70,17 +70,19 @@ class LocalSession:
         self._path_mapping_rules = path_mapping_rules
         self._environments = environments
 
-        # Evaluate Job parameters, if applicable
-        if job.parameters:
-            parameters_as_list = [
-                Parameter(type=ParameterValueType(param.type.name), name=name, value=param.value)
-                for (name, param) in job.parameters.items()
-            ]
-
         # Create an inner Session
+        job_parameters: JobParameterValues
+        if job.parameters:
+            job_parameters = {
+                name: ParameterValue(type=ParameterValueType(param.type.value), value=param.value)
+                for name, param in job.parameters.items()
+            }
+        else:
+            job_parameters = dict[str, ParameterValue]()
+
         self._inner_session = Session(
             session_id=self.session_id,
-            job_parameter_values=parameters_as_list if job.parameters else [],
+            job_parameter_values=job_parameters,
             path_mapping_rules=self._path_mapping_rules,
             callback=self._action_callback,
         )
@@ -168,28 +170,23 @@ class LocalSession:
         for dep in dependencies:
             if not dep.parameterSpace:
                 self._action_queue.put(
-                    RunTaskAction(session=self._inner_session, step=dep, parameters=[])
+                    RunTaskAction(
+                        session=self._inner_session,
+                        step=dep,
+                        parameters=dict[str, ParameterValue](),
+                    )
                 )
             else:
                 for parameter_set in StepParameterSpaceIterator(space=dep.parameterSpace):
                     self._action_queue.put(
                         RunTaskAction(
-                            session=self._inner_session,
-                            step=dep,
-                            parameters=[
-                                Parameter(
-                                    type=param.type,
-                                    name=name,
-                                    value=param.value,
-                                )
-                                for name, param in parameter_set.items()
-                            ],
+                            session=self._inner_session, step=dep, parameters=parameter_set
                         )
                     )
 
         # The Step specified by the user is the only one that needs to use custom Task parameters, if given
         if not step.parameterSpace:
-            self._action_queue.put(RunTaskAction(self._inner_session, step=step, parameters=[]))
+            self._action_queue.put(RunTaskAction(self._inner_session, step=step, parameters=dict()))
 
         else:
             if not task_parameter_values:
@@ -220,18 +217,7 @@ class LocalSession:
 
             for param_set in parameter_sets:
                 self._action_queue.put(
-                    RunTaskAction(
-                        self._inner_session,
-                        step=step,
-                        parameters=[
-                            Parameter(
-                                type=param.type,
-                                name=name,
-                                value=param.value,
-                            )
-                            for name, param in param_set.items()
-                        ],
-                    )
+                    RunTaskAction(self._inner_session, step=step, parameters=param_set)
                 )
 
         # Finally, enqueue ExitEnvironment Actions in reverse order to EnterEnvironment

@@ -1,8 +1,8 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-from openjd.model import Step
+from openjd.model import Step, TaskParameterSet
 from openjd.model.v2023_09 import Environment
-from openjd.sessions import Parameter, Session
+from openjd.sessions import Session
 
 
 class SessionAction:
@@ -21,9 +21,9 @@ class SessionAction:
 
 class RunTaskAction(SessionAction):
     _step: Step
-    _parameters: list[Parameter]
+    _parameters: TaskParameterSet
 
-    def __init__(self, session: Session, step: Step, parameters: list[Parameter]):
+    def __init__(self, session: Session, step: Step, parameters: TaskParameterSet):
         super(RunTaskAction, self).__init__(session)
         self._step = step
         self._parameters = parameters
@@ -34,7 +34,8 @@ class RunTaskAction(SessionAction):
         )
 
     def __str__(self):
-        return f"Run Step '{self._step.name}' with Task parameters '{[parameter.value for parameter in self._parameters]}'"
+        parameters = {name: parameter.value for name, parameter in self._parameters.items()}
+        return f"Run Step '{self._step.name}' with Task parameters '{str(parameters)}'"
 
 
 class EnterEnvironmentAction(SessionAction):

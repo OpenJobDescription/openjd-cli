@@ -3,7 +3,7 @@
 from argparse import Namespace
 from openjd.model import (
     DecodeValidationError,
-    SchemaVersion,
+    TemplateSpecificationVersion,
     decode_job_template,
     decode_environment_template,
 )
@@ -23,12 +23,12 @@ def do_check(args: Namespace) -> OpenJDCliResult:
         document_version = template_object["specificationVersion"]
 
         # Raises: ValueError
-        template_version = SchemaVersion(document_version)
+        template_version = TemplateSpecificationVersion(document_version)
 
         # Raises: DecodeValidationError
-        if SchemaVersion.is_job_template(template_version):
+        if TemplateSpecificationVersion.is_job_template(template_version):
             decode_job_template(template=template_object)
-        elif SchemaVersion.is_environment_template(template_version):
+        elif TemplateSpecificationVersion.is_environment_template(template_version):
             decode_environment_template(template=template_object)
         else:
             return OpenJDCliResult(

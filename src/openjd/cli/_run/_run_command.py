@@ -415,7 +415,6 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         elif args.tasks:
             task_params = _process_tasks(args.tasks)
 
-        print(step_map[args.step])
         _validate_task_params(step_map[args.step], task_params)
 
     except RuntimeError as rte:

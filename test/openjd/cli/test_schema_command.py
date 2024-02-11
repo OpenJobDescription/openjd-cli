@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 from openjd.cli._schema._schema_command import do_get_schema, _process_regex
-from openjd.model import SchemaVersion
+from openjd.model import TemplateSpecificationVersion
 from pydantic import BaseModel
 
 from argparse import Namespace
@@ -64,7 +64,12 @@ def test_do_get_schema_success(capsys: pytest.CaptureFixture):
     with patch(
         "openjd.cli._schema._schema_command._process_regex", new=Mock(side_effect=_process_regex)
     ) as patched_process_regex:
-        do_get_schema(Namespace(version=SchemaVersion.v2023_09, output="human-readable"))
+        do_get_schema(
+            Namespace(
+                version=TemplateSpecificationVersion.JOBTEMPLATE_v2023_09.value,
+                output="human-readable",
+            )
+        )
         patched_process_regex.assert_called()
 
     model_output = capsys.readouterr().out
@@ -87,7 +92,10 @@ def test_do_get_schema_success_environment(capsys: pytest.CaptureFixture):
         "openjd.cli._schema._schema_command._process_regex", new=Mock(side_effect=_process_regex)
     ) as patched_process_regex:
         do_get_schema(
-            Namespace(version=SchemaVersion.ENVIRONMENT_v2023_09, output="human-readable")
+            Namespace(
+                version=TemplateSpecificationVersion.ENVIRONMENT_v2023_09.value,
+                output="human-readable",
+            )
         )
         patched_process_regex.assert_called()
 
@@ -124,7 +132,12 @@ def test_do_get_schema_error(capsys: pytest.CaptureFixture):
         patch.object(BaseModel, "schema", side_effect=RuntimeError("Test error")),
         pytest.raises(SystemExit),
     ):
-        do_get_schema(Namespace(version=SchemaVersion.v2023_09, output="human-readable"))
+        do_get_schema(
+            Namespace(
+                version=TemplateSpecificationVersion.JOBTEMPLATE_v2023_09.value,
+                output="human-readable",
+            )
+        )
     output = capsys.readouterr().out
 
     assert "Test error" in output
