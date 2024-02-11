@@ -104,6 +104,29 @@ jobs:
           pip install --upgrade hatch
           hatch build
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PGP_KEY_SECRET_ROLE }}
+          aws-region: us-west-2
+          mask-aws-account-id: true
+
+      - name: Import PGP Key
+        run: |
+          SECRET_STRING="$(aws secretsmanager get-secret-value --secret-id ${{ secrets.AWS_PGP_KEY_SECRET }} --query 'SecretString')"
+          echo "$SECRET_STRING" | jq -r '. | fromjson | .PrivateKey' | gpg --batch --pinentry-mode loopback --import --armor
+
+          PGP_KEY_PASSPHRASE=$(echo "$SECRET_STRING" | jq -r '. | fromjson | .Passphrase')
+          echo "::add-mask::$PGP_KEY_PASSPHRASE"
+          echo "PGP_KEY_PASSPHRASE=$PGP_KEY_PASSPHRASE" >> $GITHUB_ENV
+
+      - name: Sign
+        run: |
+          for file in dist/*; do
+            echo "$PGP_KEY_PASSPHRASE" | gpg --batch --pinentry-mode loopback --local-user "Open Job Description" --passphrase-fd 0 --output $file.sig --detach-sign $file
+            echo "Created signature file for $file"
+          fi
+
       - name: PushRelease
         env:
           GH_TOKEN: ${{ secrets.CI_TOKEN }}
