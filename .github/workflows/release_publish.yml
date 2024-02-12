@@ -211,6 +211,10 @@ jobs:
           export TWINE_REPOSITORY_URL=`aws codeartifact get-repository-endpoint --domain ${{ secrets.CUSTOMER_DOMAIN }} --domain-owner ${{ secrets.CODEARTIFACT_ACCOUNT_ID }} --repository ${{ secrets.CUSTOMER_REPOSITORY }} --format pypi --query repositoryEndpoint --output text`
           twine upload dist/*
 
+      # See https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-pypi
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
   PublishToInternal:
     needs: Release
     runs-on: ubuntu-latest
