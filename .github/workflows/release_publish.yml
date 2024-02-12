@@ -114,16 +114,16 @@ jobs:
       - name: Import PGP Key
         run: |
           SECRET_STRING="$(aws secretsmanager get-secret-value --secret-id ${{ secrets.AWS_PGP_KEY_SECRET }} --query 'SecretString')"
-          echo "$SECRET_STRING" | jq -r '. | fromjson | .PrivateKey' | gpg --batch --pinentry-mode loopback --import --armor
+          printenv SECRET_STRING | jq -r '. | fromjson | .PrivateKey' | gpg --batch --pinentry-mode loopback --import --armor
 
-          PGP_KEY_PASSPHRASE=$(echo "$SECRET_STRING" | jq -r '. | fromjson | .Passphrase')
+          PGP_KEY_PASSPHRASE=$(printenv SECRET_STRING | jq -r '. | fromjson | .Passphrase')
           echo "::add-mask::$PGP_KEY_PASSPHRASE"
           echo "PGP_KEY_PASSPHRASE=$PGP_KEY_PASSPHRASE" >> $GITHUB_ENV
 
       - name: Sign
         run: |
           for file in dist/*; do
-            echo "$PGP_KEY_PASSPHRASE" | gpg --batch --pinentry-mode loopback --local-user "Open Job Description" --passphrase-fd 0 --output $file.sig --detach-sign $file
+            printenv PGP_KEY_PASSPHRASE | gpg --batch --pinentry-mode loopback --local-user "Open Job Description" --passphrase-fd 0 --output $file.sig --detach-sign $file
             echo "Created signature file for $file"
           fi
 
