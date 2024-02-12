@@ -124,7 +124,7 @@ def job_from_template(
             current_working_dir=current_working_dir,
         )
     except ValueError as ve:
-        raise RuntimeError(f"Parameters can't be used with Template: {str(ve)}")
+        raise RuntimeError(str(ve))
 
     try:
         return create_job(job_template=template, job_parameter_values=parameter_values)
