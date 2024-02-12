@@ -113,7 +113,7 @@ jobs:
 
       - name: Import PGP Key
         run: |
-          SECRET_STRING="$(aws secretsmanager get-secret-value --secret-id ${{ secrets.AWS_PGP_KEY_SECRET }} --query 'SecretString')"
+          export SECRET_STRING="$(aws secretsmanager get-secret-value --secret-id ${{ secrets.AWS_PGP_KEY_SECRET }} --query 'SecretString')"
           printenv SECRET_STRING | jq -r '. | fromjson | .PrivateKey' | gpg --batch --pinentry-mode loopback --import --armor
 
           PGP_KEY_PASSPHRASE=$(printenv SECRET_STRING | jq -r '. | fromjson | .Passphrase')
@@ -125,7 +125,7 @@ jobs:
           for file in dist/*; do
             printenv PGP_KEY_PASSPHRASE | gpg --batch --pinentry-mode loopback --local-user "Open Job Description" --passphrase-fd 0 --output $file.sig --detach-sign $file
             echo "Created signature file for $file"
-          fi
+          done
 
       - name: PushRelease
         env:
