@@ -7,7 +7,7 @@ import pytest
 import sys
 
 from openjd import __main__
-from openjd.model import SchemaVersion
+from openjd.model import TemplateSpecificationVersion
 
 
 @patch("openjd.cli._check.do_check")
@@ -167,10 +167,10 @@ def test_cli_schema_success(mock_schema: Mock):
     """
 
     mock_schema.assert_not_called()
-    # "UNDEFINED" should always be a valid SchemaVersion option, even though the unpatched
+    # "UNDEFINED" should always be a valid TemplateSpecificationVersion option, even though the unpatched
     # `do_get_schema` function throws an error on receiving it
     with patch.object(
-        sys, "argv", new=(["openjd", "schema", "--version", SchemaVersion.UNDEFINED])
+        sys, "argv", new=(["openjd", "schema", "--version", TemplateSpecificationVersion.UNDEFINED])
     ):
         __main__.main()
         mock_schema.assert_called_once()

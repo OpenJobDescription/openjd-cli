@@ -5,19 +5,20 @@ import json
 from typing import Union
 
 from .._common import OpenJDCliResult, print_cli_result
-from openjd.model import SchemaVersion, JobTemplate, EnvironmentTemplate
+from openjd.model import EnvironmentTemplate, JobTemplate, TemplateSpecificationVersion
 
 
 def add_schema_arguments(schema_parser: ArgumentParser) -> None:
     allowed_values = [
         v.value
-        for v in SchemaVersion
-        if SchemaVersion.is_job_template(v) or SchemaVersion.is_environment_template(v)
+        for v in TemplateSpecificationVersion
+        if TemplateSpecificationVersion.is_job_template(v)
+        or TemplateSpecificationVersion.is_environment_template(v)
     ]
     schema_parser.add_argument(
         "--version",
         action="store",
-        type=SchemaVersion,
+        type=TemplateSpecificationVersion,
         required=True,
         help=f"The specification version to return a JSON schema document for. Allowed values: {', '.join(allowed_values)}",
     )
@@ -46,9 +47,9 @@ def do_get_schema(args: Namespace) -> OpenJDCliResult:
     """
 
     Template: Union[type[JobTemplate], type[EnvironmentTemplate]]
-    if args.version == SchemaVersion.v2023_09:
+    if args.version == TemplateSpecificationVersion.JOBTEMPLATE_v2023_09:
         from openjd.model.v2023_09 import JobTemplate as Template
-    elif args.version == SchemaVersion.ENVIRONMENT_v2023_09:
+    elif args.version == TemplateSpecificationVersion.ENVIRONMENT_v2023_09:
         from openjd.model.v2023_09 import EnvironmentTemplate as Template
     else:
         return OpenJDCliResult(
