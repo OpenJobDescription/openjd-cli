@@ -1,3 +1,10 @@
+## 0.4.0 (2024-02-13)
+
+### BREAKING CHANGES
+* public release (#41) ([`88dd089`](https://github.com/OpenJobDescription/openjd-cli/commit/88dd089848422b54acf99e1d69fbeacb61691676))
+
+
+
 ## 0.3.0 (2024-02-12)
 
 ### BREAKING CHANGES
