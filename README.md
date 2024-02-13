@@ -1,5 +1,7 @@
 ## Open Job Description - CLI
 
+[![pypi](https://img.shields.io/pypi/v/openjd-cli.svg)](https://pypi.python.org/pypi/openjd-cli)
+
 Open Job Description (OpenJD) is a flexible open specification for defining render jobs which are portable
 between studios and render solutions. This package provides a command-line interface that can be used
 to validate OpenJD templates, run OpenJD jobs locally, and more.
@@ -16,7 +18,12 @@ This library requires:
 3. On Linux/MacOS:
     * `sudo`
 4. On Windows:
-    * PowerShell 7+
+    * PowerShell 5.x
+
+**EXPERIMENTAL** Note that compatibility with the Windows operating system is currently in active development
+and should be considered to be experimental. We recommend that this application not be used in Windows-based
+production environments at this time. We will remove this notice when Windows compatibility is considered
+sufficiently stable and secure for use in Windows-based production environments.
 
 ## Versioning
 
@@ -27,6 +34,13 @@ versions will increment during this initial development stage, they are describe
 1. The MAJOR version is currently 0, indicating initial development. 
 2. The MINOR version is currently incremented when backwards incompatible changes are introduced to the public API. 
 3. The PATCH version is currently incremented when bug fixes or backwards compatible changes are introduced to the public API. 
+
+## Contributing
+
+We encourage all contributions to this package.  Whether it's a bug report, new feature, correction, or additional
+documentation, we greatly value feedback and contributions from our community.
+
+Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for our contributing guidelines.
 
 ## Commands
 

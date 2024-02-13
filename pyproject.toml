@@ -26,9 +26,14 @@ classifiers = [
   "Intended Audience :: End Users/Desktop"
 ]
 dependencies = [
-  "openjd-sessions == 0.4.*",
-  "openjd-model == 0.3.*"
+  "openjd-sessions == 0.5.*",
+  "openjd-model == 0.4.*"
 ]
+
+[project.urls]
+Homepage = "https://github.com/OpenJobDescription/openjd-cli"
+Source = "https://github.com/OpenJobDescription/openjd-cli"
+
 
 [project.scripts]
 openjd = "openjd:__main__.main"
