@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 from typing import Optional
 import re
+import logging
 
 from ._local_session._session_manager import LocalSession, LogEntry
 from .._common import (
@@ -22,7 +23,7 @@ from openjd.model import (
     Step,
     StepParameterSpaceIterator,
 )
-from openjd.sessions import PathMappingRule
+from openjd.sessions import PathMappingRule, LOG
 
 
 @dataclass
@@ -118,6 +119,20 @@ def add_run_arguments(run_parser: ArgumentParser):
         type=str,
         metavar="<path-to-JSON/YAML-file> [<path-to-JSON/YAML-file>] ...",
         help="Apply the given environments to the Session in the order given.",
+    )
+    run_parser.add_argument(
+        "--preserve",
+        action="store_const",
+        const=True,
+        default=False,
+        help="Do not automatically delete the Session's Working Directory when complete.",
+    )
+    run_parser.add_argument(
+        "--verbose",
+        action="store_const",
+        const=True,
+        default=False,
+        help="Enable verbose logging while running the Session.",
     )
 
 
@@ -301,6 +316,7 @@ def _run_local_session(
     path_mapping_rules: Optional[list[PathMappingRule]],
     should_run_dependencies: bool = False,
     should_print_logs: bool = True,
+    retain_working_dir: bool = False,
 ) -> OpenJDCliResult:
     """
     Creates a Session object and listens for log messages to synchronously end the session.
@@ -320,6 +336,7 @@ def _run_local_session(
         path_mapping_rules=path_mapping_rules,
         environments=environments,
         should_print_logs=should_print_logs,
+        retain_working_dir=retain_working_dir,
     ) as session:
         session.initialize(
             dependencies=dependencies,
@@ -332,10 +349,15 @@ def _run_local_session(
         # Monitor the local Session state
         session.ended.wait()
 
+    preserved_message: str = ""
+    if retain_working_dir:
+        preserved_message = (
+            f"\nWorking directory preserved at: {str(session._inner_session.working_directory)}"
+        )
     if session.failed:
         return OpenJDRunResult(
             status="error",
-            message="Session ended with errors; see Task logs for details",
+            message="Session ended with errors; see Task logs for details" + preserved_message,
             job_name=job.name,
             step_name=step.name,
             duration=session.get_duration(),
@@ -345,7 +367,7 @@ def _run_local_session(
 
     return OpenJDRunResult(
         status="success",
-        message="Session ended successfully",
+        message="Session ended successfully" + preserved_message,
         job_name=job.name,
         step_name=step.name,
         duration=session.get_duration(),
@@ -397,6 +419,9 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         rules_list = parsed_rules.get("path_mapping_rules")
         path_mapping_rules = [PathMappingRule.from_dict(rule) for rule in rules_list]
 
+    if args.verbose:
+        LOG.setLevel(logging.DEBUG)
+
     try:
         # Raises: RuntimeError
         the_job = generate_job(args)
@@ -430,4 +455,5 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         path_mapping_rules=path_mapping_rules,
         should_run_dependencies=(args.run_dependencies),
         should_print_logs=(args.output == "human-readable"),
+        retain_working_dir=args.preserve,
     )

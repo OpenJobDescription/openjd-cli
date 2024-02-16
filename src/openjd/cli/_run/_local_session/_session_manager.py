@@ -62,6 +62,7 @@ class LocalSession:
         path_mapping_rules: Optional[list[PathMappingRule]] = None,
         environments: Optional[list[EnvironmentTemplate]] = None,
         should_print_logs: bool = True,
+        retain_working_dir: bool = False,
     ):
         self.session_id = session_id
         self.ended = Event()
@@ -85,6 +86,7 @@ class LocalSession:
             job_parameter_values=job_parameters,
             path_mapping_rules=self._path_mapping_rules,
             callback=self._action_callback,
+            retain_working_dir=retain_working_dir,
         )
 
         # Initialize the action queue

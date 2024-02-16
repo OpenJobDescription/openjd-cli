@@ -157,7 +157,7 @@ def print_cli_result(command: Callable[[Namespace], OpenJDCliResult]) -> Callabl
     Used to decorate the `do_<command>` functions for each command.
     """
 
-    def format_results(args: Namespace) -> None:
+    def format_results(args: Namespace) -> OpenJDCliResult:
         response = command(args)
 
         if args.output == "human-readable":
@@ -174,5 +174,7 @@ def print_cli_result(command: Callable[[Namespace], OpenJDCliResult]) -> Callabl
 
         if response.status == "error":
             raise SystemExit(1)
+
+        return response
 
     return format_results
