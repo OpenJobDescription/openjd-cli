@@ -7,6 +7,7 @@ import tempfile
 import re
 import os
 from typing import Any, Optional
+import logging
 
 import pytest
 from unittest.mock import Mock, patch
@@ -21,7 +22,7 @@ from openjd.cli._run._run_command import (
     _validate_task_params,
 )
 from openjd.cli._run._local_session._session_manager import LocalSession
-from openjd.sessions import PathMappingRule, PathFormat, Session
+from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat, Session
 from openjd.model import decode_job_template, create_job, ParameterValue, ParameterValueType
 
 
@@ -283,6 +284,8 @@ def test_do_run_success(
             path_mapping_rules=None,
             environments=environments_files,
             output="human-readable",
+            verbose=False,
+            preserve=False,
         )
 
         # WHEN
@@ -295,6 +298,120 @@ def test_do_run_success(
         assert expected_output.search("".join(m.strip() for m in caplog.messages))
         if expected_not_in_output:
             assert expected_not_in_output not in caplog.text
+    finally:
+        for f in files_created:
+            f.unlink()
+
+
+def test_preserve_option(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that the 'run' command preserves the session working directory when asked to."""
+
+    files_created: list[Path] = []
+    try:
+        # GIVEN
+        with tempfile.NamedTemporaryFile(
+            mode="w+t", suffix=".template.json", encoding="utf8", delete=False
+        ) as job_template_file:
+            json.dump(
+                {
+                    "name": "TestJob",
+                    "specificationVersion": "jobtemplate-2023-09",
+                    "steps": [
+                        {
+                            "name": "TestStep",
+                            "script": {
+                                "actions": {"onRun": {"command": "echo", "args": ["Hello World"]}}
+                            },
+                        }
+                    ],
+                },
+                job_template_file.file,
+            )
+        files_created.append(Path(job_template_file.name))
+
+        args = Namespace(
+            path=Path(job_template_file.name),
+            step="TestStep",
+            job_params=[],
+            task_params=None,
+            tasks=None,
+            maximum_tasks=-1,
+            run_dependencies=False,
+            path_mapping_rules=None,
+            environments=[],
+            output="human-readable",
+            verbose=False,
+            preserve=True,
+        )
+
+        # WHEN
+        result = do_run(args)
+
+        # THEN
+        assert "Working directory preserved at" in result.message
+        # Extract the working directory from the output
+        match = re.search("Working directory preserved at: (.+)", result.message)
+        assert match is not None
+        dir = match[1]
+        assert Path(dir).exists()
+    finally:
+        for f in files_created:
+            f.unlink()
+
+
+def test_verbose_option(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that the verbose option has set the log level of the openjd-sessions library to DEBUG."""
+
+    files_created: list[Path] = []
+    try:
+        # GIVEN
+        with tempfile.NamedTemporaryFile(
+            mode="w+t", suffix=".template.json", encoding="utf8", delete=False
+        ) as job_template_file:
+            json.dump(
+                {
+                    "name": "TestJob",
+                    "specificationVersion": "jobtemplate-2023-09",
+                    "steps": [
+                        {
+                            "name": "TestStep",
+                            "script": {
+                                "actions": {"onRun": {"command": "echo", "args": ["Hello World"]}}
+                            },
+                        }
+                    ],
+                },
+                job_template_file.file,
+            )
+        files_created.append(Path(job_template_file.name))
+
+        args = Namespace(
+            path=Path(job_template_file.name),
+            step="TestStep",
+            job_params=[],
+            task_params=None,
+            tasks=None,
+            maximum_tasks=-1,
+            run_dependencies=False,
+            path_mapping_rules=None,
+            environments=[],
+            output="human-readable",
+            verbose=True,
+            preserve=False,
+        )
+
+        # WHEN
+        do_run(args)
+
+        # THEN
+        assert SessionsLogger.isEnabledFor(logging.DEBUG)
+
+        # Reset the state to not interfere with other tests.
+        SessionsLogger.setLevel(logging.INFO)
     finally:
         for f in files_created:
             f.unlink()
@@ -313,6 +430,8 @@ def test_do_run_error():
         path_mapping_rules=None,
         environments=[],
         output="human-readable",
+        verbose=False,
+        preserve=False,
     )
     with pytest.raises(SystemExit):
         do_run(mock_args)
@@ -371,6 +490,8 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
             path_mapping_rules="file://" + temp_rules.name,
             environments=[],
             maximum_tasks=1,
+            verbose=False,
+            preserve=False,
         )
 
         # WHEN
@@ -415,6 +536,8 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
         path_mapping_rules=None,
         environments=[],
         output="human-readable",
+        verbose=False,
+        preserve=False,
     )
     with pytest.raises(SystemExit):
         do_run(mock_args)
