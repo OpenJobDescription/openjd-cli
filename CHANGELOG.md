@@ -1,3 +1,10 @@
+## 0.5.0 (2024-02-21)
+
+
+### Features
+* add template-debugging options to `openjd run` (#52) ([`80e8cb9`](https://github.com/OpenJobDescription/openjd-cli/commit/80e8cb9f12392dbd2e89c2bb850853640f2dc706))
+
+
 ## 0.4.0 (2024-02-13)
 
 ### BREAKING CHANGES
