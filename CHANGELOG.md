@@ -1,3 +1,10 @@
+## 0.4.2 (2024-03-11)
+
+
+### Features
+* update to openjd-sessions 0.7.* (#66) ([`4d44db9`](https://github.com/OpenJobDescription/openjd-cli/commit/4d44db92e1c2e2e6aa1aa326bccc45ea8a5a31d4))
+
+
 ## 0.4.1 (2024-02-21)
 
 
