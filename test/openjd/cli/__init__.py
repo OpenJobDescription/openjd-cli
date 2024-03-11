@@ -15,12 +15,18 @@ MOCK_TEMPLATE = {
         {
             # Basic step; uses Job parameters and has an environment
             "name": "NormalStep",
-            "script": {"actions": {"onRun": {"command": "echo", "args": ["{{Param.Message}}"]}}},
+            "script": {
+                "actions": {
+                    "onRun": {"command": "python", "args": ["-c", "print('{{Param.Message}}')"]}
+                }
+            },
             "stepEnvironments": [
                 {
                     "name": "env1",
                     "script": {
-                        "actions": {"onEnter": {"command": "echo", "args": ["EnteringEnv"]}}
+                        "actions": {
+                            "onEnter": {"command": "python", "args": ["-c", "print('EnteringEnv')"]}
+                        }
                     },
                 }
             ],
@@ -33,12 +39,16 @@ MOCK_TEMPLATE = {
         {
             # Step with the bare minimum information, i.e., no Task parameters, environments, or dependencies
             "name": "BareStep",
-            "script": {"actions": {"onRun": {"command": "echo", "args": ["zzz"]}}},
+            "script": {"actions": {"onRun": {"command": "python", "args": ["-c", "print('zzz')"]}}},
         },
         {
             # Step with a direct dependency on a previous Step
             "name": "DependentStep",
-            "script": {"actions": {"onRun": {"command": "echo", "args": ["I am dependent!"]}}},
+            "script": {
+                "actions": {
+                    "onRun": {"command": "python", "args": ["-c", "print('I am dependent!')"]}
+                }
+            },
             "dependencies": [{"dependsOn": "BareStep"}],
         },
         {
@@ -53,8 +63,11 @@ MOCK_TEMPLATE = {
             "script": {
                 "actions": {
                     "onRun": {
-                        "command": "echo",
-                        "args": ["{{Task.Param.TaskNumber}}. {{Task.Param.TaskMessage}}"],
+                        "command": "python",
+                        "args": [
+                            "-c",
+                            "print('{{Task.Param.TaskNumber}}.{{Task.Param.TaskMessage}}')",
+                        ],
                     }
                 }
             },
@@ -63,7 +76,9 @@ MOCK_TEMPLATE = {
             # Step with a transitive dependency and a direct dependency
             "name": "ExtraDependentStep",
             "script": {
-                "actions": {"onRun": {"command": "echo", "args": ["I am extra dependent!"]}}
+                "actions": {
+                    "onRun": {"command": "python", "args": ["-c", "print('I am extra dependent!')"]}
+                }
             },
             "dependencies": [{"dependsOn": "DependentStep"}, {"dependsOn": "TaskParamStep"}],
         },
@@ -78,8 +93,8 @@ MOCK_TEMPLATE = {
             "script": {
                 "actions": {
                     "onRun": {
-                        "command": "echo",
-                        "args": ["I am {{Task.Param.Adjective}} dependent!"],
+                        "command": "python",
+                        "args": ["-c", "print('I am {{Task.Param.Adjective}} dependent!')"],
                     }
                 }
             },
@@ -94,7 +109,11 @@ MOCK_TEMPLATE = {
         {
             # Step with a dependency it can't run in the same Session with
             "name": "ShouldSeparateSession",
-            "script": {"actions": {"onRun": {"command": "echo", "args": ["I don't belong here!"]}}},
+            "script": {
+                "actions": {
+                    "onRun": {"command": "python", "args": ["-c", "print('I do not belong here!')"]}
+                }
+            },
             "dependencies": [{"dependsOn": "NormalStep"}],
         },
     ],
@@ -127,11 +146,22 @@ MOCK_TEMPLATE_REQUIRES_PARAMS = {
     "steps": [
         {
             "name": "step1",
-            "script": {"actions": {"onRun": {"command": "echo {{Param.RequiredParam}}"}}},
+            "script": {
+                "actions": {
+                    "onRun": {
+                        "command": "python",
+                        "args": ["-c", "print('{{Param.RequiredParam}}')"],
+                    }
+                }
+            },
         },
         {
             "name": "step2",
-            "script": {"actions": {"onRun": {"command": 'echo "Hello, world!"'}}},
+            "script": {
+                "actions": {
+                    "onRun": {"command": "python", "args": ["-c", "print('Hello, world!'}"]}
+                }
+            },
             "stepEnvironments": [
                 {"name": "my-step1-environment", "variables": {"variable": "value"}}
             ],
