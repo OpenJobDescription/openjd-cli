@@ -1,7 +1,7 @@
 coverage[toml] == 7.*
 pytest == 8.0.*
 pytest-cov == 4.1.*
-pytest-timeout == 2.2.*
+pytest-timeout == 2.3.*
 pytest-xdist == 3.5.*
 types-PyYAML == 6.*
 black == 24.*
