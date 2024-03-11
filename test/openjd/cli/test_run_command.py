@@ -35,8 +35,8 @@ TEST_RUN_JOB_TEMPLATE_BASIC = {
             "name": "J1",
             "script": {
                 "actions": {
-                    "onEnter": {"command": "echo", "args": ["J1 Enter"]},
-                    "onExit": {"command": "echo", "args": ["J1 Exit"]},
+                    "onEnter": {"command": "python", "args": ["-c", "print('J1 Enter')"]},
+                    "onExit": {"command": "python", "args": ["-c", "print('J1 Exit')"]},
                 }
             },
         },
@@ -44,8 +44,8 @@ TEST_RUN_JOB_TEMPLATE_BASIC = {
             "name": "J2",
             "script": {
                 "actions": {
-                    "onEnter": {"command": "echo", "args": ["J2 Enter"]},
-                    "onExit": {"command": "echo", "args": ["J2 Exit"]},
+                    "onEnter": {"command": "python", "args": ["-c", "print('J2 Enter')"]},
+                    "onExit": {"command": "python", "args": ["-c", "print('J2 Exit')"]},
                 }
             },
         },
@@ -64,8 +64,11 @@ TEST_RUN_JOB_TEMPLATE_BASIC = {
                     "name": "FirstS",
                     "script": {
                         "actions": {
-                            "onEnter": {"command": "echo", "args": ["FirstS Enter"]},
-                            "onExit": {"command": "echo", "args": ["FirstS Exit"]},
+                            "onEnter": {
+                                "command": "python",
+                                "args": ["-c", "print('FirstS Enter')"],
+                            },
+                            "onExit": {"command": "python", "args": ["-c", "print('FirstS Exit')"]},
                         }
                     },
                 },
@@ -73,9 +76,10 @@ TEST_RUN_JOB_TEMPLATE_BASIC = {
             "script": {
                 "actions": {
                     "onRun": {
-                        "command": "echo",
+                        "command": "python",
                         "args": [
-                            "J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}",
+                            "-c",
+                            "print('J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}')",
                         ],
                     }
                 }
@@ -93,8 +97,8 @@ TEST_RUN_JOB_TEMPLATE_DEPENDENCY = {
             "name": "J1",
             "script": {
                 "actions": {
-                    "onEnter": {"command": "echo", "args": ["J1 Enter"]},
-                    "onExit": {"command": "echo", "args": ["J1 Exit"]},
+                    "onEnter": {"command": "python", "args": ["-c", "print('J1 Enter')"]},
+                    "onExit": {"command": "python", "args": ["-c", "print('J1 Exit')"]},
                 }
             },
         },
@@ -111,9 +115,10 @@ TEST_RUN_JOB_TEMPLATE_DEPENDENCY = {
             "script": {
                 "actions": {
                     "onRun": {
-                        "command": "echo",
+                        "command": "python",
                         "args": [
-                            "J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}",
+                            "-c",
+                            "print('J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}')",
                         ],
                     }
                 }
@@ -130,9 +135,10 @@ TEST_RUN_JOB_TEMPLATE_DEPENDENCY = {
             "script": {
                 "actions": {
                     "onRun": {
-                        "command": "echo",
+                        "command": "python",
                         "args": [
-                            "J={{Param.J}} Fuz={{Task.Param.Fuz}}.",
+                            "-c",
+                            "print('J={{Param.J}} Fuz={{Task.Param.Fuz}}.')",
                         ],
                     }
                 }
@@ -147,8 +153,8 @@ TEST_RUN_ENV_TEMPLATE_1 = {
         "name": "Env1",
         "script": {
             "actions": {
-                "onEnter": {"command": "echo", "args": ["Env1 Enter"]},
-                "onExit": {"command": "echo", "args": ["Env1 Exit"]},
+                "onEnter": {"command": "python", "args": ["-c", "print('Env1 Enter')"]},
+                "onExit": {"command": "python", "args": ["-c", "print('Env1 Exit')"]},
             }
         },
     },
@@ -160,8 +166,8 @@ TEST_RUN_ENV_TEMPLATE_2 = {
         "name": "Env2",
         "script": {
             "actions": {
-                "onEnter": {"command": "echo", "args": ["Env2 Enter"]},
-                "onExit": {"command": "echo", "args": ["Env2 Exit"]},
+                "onEnter": {"command": "python", "args": ["-c", "print('Env2 Enter')"]},
+                "onExit": {"command": "python", "args": ["-c", "print('Env2 Exit')"]},
             }
         },
     },
@@ -322,7 +328,12 @@ def test_preserve_option(
                         {
                             "name": "TestStep",
                             "script": {
-                                "actions": {"onRun": {"command": "echo", "args": ["Hello World"]}}
+                                "actions": {
+                                    "onRun": {
+                                        "command": "python",
+                                        "args": ["-c", "print('Hello World')"],
+                                    }
+                                }
                             },
                         }
                     ],
@@ -380,7 +391,12 @@ def test_verbose_option(
                         {
                             "name": "TestStep",
                             "script": {
-                                "actions": {"onRun": {"command": "echo", "args": ["Hello World"]}}
+                                "actions": {
+                                    "onRun": {
+                                        "command": "python",
+                                        "args": ["-c", "print('Hello World')"],
+                                    }
+                                }
                             },
                         }
                     ],
@@ -450,7 +466,12 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
             {
                 "name": "TestStep",
                 "script": {
-                    "actions": {"onRun": {"command": "echo", "args": ["Mapped:{{Param.TestPath}}"]}}
+                    "actions": {
+                        "onRun": {
+                            "command": "python",
+                            "args": ["-c", "print('Mapped:{{Param.TestPath}}')"],
+                        }
+                    }
                 },
             }
         ],
@@ -504,7 +525,7 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
         if os.name == "posix":
             assert any("Mapped:/mnt/test" in m for m in caplog.messages)
         else:
-            assert any(r"Mapped:\\mnt\\test" in m for m in caplog.messages)
+            assert any(r"Mapped:\mnt\test" in m for m in caplog.messages)
     finally:
         if temp_rules:
             Path(temp_rules.name).unlink()

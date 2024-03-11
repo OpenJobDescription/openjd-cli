@@ -12,7 +12,7 @@ from openjd.cli._run._local_session._session_manager import LocalSession
 from openjd.model import decode_job_template
 
 
-@pytest.fixture(scope="function", params=[[], ["Message='A new message!'"]])
+@pytest.fixture(scope="function", params=[[], ["Message=A new message!"]])
 def sample_job_and_dirs(request):
     """
     Uses the MOCK_TEMPLATE object to create a Job, once
