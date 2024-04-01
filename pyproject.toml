@@ -4,6 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openjd-cli"
+authors = [
+  {name = "Amazon Web Services"},
+]
 dynamic = ["version"]
 readme = "README.md"
 license = "Apache-2.0"
