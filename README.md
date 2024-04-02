@@ -78,7 +78,7 @@ customize the Job, as parameters can have an impact on the amount of Steps and T
 
 #### Example
 ```sh
-$ openjd-cli summary /path/to/job.template.json \
+$ openjd summary /path/to/job.template.json \
     --job-param JobName=SampleJob \
     --job-param '{"FileToRender": "sample.blend"}' \
     --job-param file://some_more_parameters.json
@@ -132,7 +132,7 @@ details on how Open Job Description's Jobs are run within Sessions.
 
 #### Example
 ```sh
-$ openjd-cli run /path/to/job.template.json --step Step1 \
+$ openjd run /path/to/job.template.json --step Step1 \
     --job-param PingServer=amazon.com \
     --task-param PingCount=20 \
     --task-param PingDelay=30
@@ -161,7 +161,7 @@ Returns the Open Job Description model as a JSON schema document body.
 
 #### Example
 ```sh
-$ openjd-cli schema --version jobtemplate-2023-09
+$ openjd schema --version jobtemplate-2023-09
 
 {
     "title": "JobTemplate",
