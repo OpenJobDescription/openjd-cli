@@ -6,4 +6,4 @@ pytest-xdist == 3.6.*
 types-PyYAML == 6.*
 black == 24.*
 ruff == 0.4.*
-mypy == 1.9.*
+mypy == 1.10.*
