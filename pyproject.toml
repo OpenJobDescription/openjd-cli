@@ -29,7 +29,7 @@ classifiers = [
   "Intended Audience :: End Users/Desktop"
 ]
 dependencies = [
-  "openjd-sessions == 0.7.*",
+  "openjd-sessions == 0.8.*",
   "openjd-model == 0.4.*"
 ]
 
