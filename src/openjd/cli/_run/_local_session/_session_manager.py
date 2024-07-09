@@ -46,7 +46,8 @@ class LocalSession:
     _start_seconds: float
     _end_seconds: float
     _inner_session: Session
-    _action_queue: Queue[SessionAction]
+    _enter_env_queue: Queue[EnterEnvironmentAction]
+    _action_queue: Queue[RunTaskAction]
     _current_action: Optional[SessionAction]
     _action_ended: Event
     _path_mapping_rules: Optional[list[PathMappingRule]]
@@ -90,7 +91,8 @@ class LocalSession:
         )
 
         # Initialize the action queue
-        self._action_queue: Queue[SessionAction] = Queue()
+        self._enter_env_queue: Queue[EnterEnvironmentAction] = Queue()
+        self._action_queue: Queue[RunTaskAction] = Queue()
         self._current_action = None
 
         self._should_print_logs = should_print_logs
@@ -222,25 +224,52 @@ class LocalSession:
                     RunTaskAction(self._inner_session, step=step, parameters=param_set)
                 )
 
-        # Finally, enqueue ExitEnvironment Actions in reverse order to EnterEnvironment
-        for env_id in reversed(session_environment_ids):
-            self._action_queue.put(ExitEnvironmentAction(self._inner_session, env_id))
-
     def run(self) -> None:
         if self._inner_session.state != SessionState.READY:
             raise RuntimeError("Session is not in a READY state")
 
+        environments_entered = list[str]()
+        failed_action: Optional[SessionAction] = None
+
         self._start_seconds = time.perf_counter()
+
+        # Enter all of the Environments, and keep track of which ones we've entered
+        while not self._enter_env_queue.empty() and not self.failed:
+            self._action_ended.clear()
+            action = self._enter_env_queue.get()
+            environments_entered.append(action._id)
+            self._current_action = action
+            self._current_action.run()
+            self._action_ended.wait()
+            if self.failed:
+                failed_action = self._current_action
+
+        # Run all of the Tasks that are enqueued
         while not self._action_queue.empty() and not self.failed:
             self._action_ended.clear()
             self._current_action = self._action_queue.get()
             self._current_action.run()
             self._action_ended.wait()
+            if self.failed:
+                failed_action = self._current_action
+
+        # Exit all environments that were entered. We always try to exit all failed environments; even
+        # if an environment-enter, task, or environment exit failed.
+        while environments_entered:
+            prev_action_failed = self.failed
+            self._action_ended.clear()
+            self._current_action = ExitEnvironmentAction(
+                self._inner_session, environments_entered.pop()
+            )
+            self._current_action.run()
+            self._action_ended.wait()
+            if self.failed and not prev_action_failed:
+                failed_action = self._current_action
 
         if self.failed:
             # Action encountered an error; clean up resources and end session
             LOG.info(
-                msg=f"Open Job Description CLI: ERROR executing action: '{str(self._current_action)}' (see Task logs for details)",
+                msg=f"Open Job Description CLI: ERROR executing action: '{str(failed_action)}' (see Task logs for details)",
                 extra={"session_id": self.session_id},
             )
 
@@ -354,6 +383,6 @@ class LocalSession:
     def _add_environments(self, envs: list) -> list[str]:
         ids: list[str] = []
         for env in envs:
-            self._action_queue.put(EnterEnvironmentAction(self._inner_session, env, env.name))
+            self._enter_env_queue.put(EnterEnvironmentAction(self._inner_session, env, env.name))
             ids.append(env.name)
         return ids

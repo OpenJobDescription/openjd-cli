@@ -126,8 +126,8 @@ def test_localsession_initialize(
             patched_generate_params.assert_not_called()
 
         assert not session.ended.is_set()
-        # We expect one entry in the Action queue per Task, and two per environment (Enter and Exit)
-        assert session._action_queue.qsize() == 2 * num_expected_environments + num_expected_tasks
+        assert session._enter_env_queue.qsize() == num_expected_environments
+        assert session._action_queue.qsize() == num_expected_tasks
 
 
 @pytest.mark.usefixtures("sample_job_and_dirs")
@@ -220,11 +220,9 @@ def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.Capt
         session.run()
         session.ended.wait()
 
-    # The Session should fail and have canceled the `exit_environment` action,
-    # but will not raise an error
-    # (the error is reported in the CLI result)
+    # The Task has failed. That means that we've entered the one environment and also exited it.
     session._inner_session.enter_environment.assert_called_once()  # type: ignore
-    session._inner_session.exit_environment.assert_not_called()  # type: ignore
+    session._inner_session.exit_environment.assert_called_once()  # type: ignore
     assert session.failed
     assert session._cleanup_called
     assert "Open Job Description CLI: ERROR" in capsys.readouterr().out

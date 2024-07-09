@@ -173,9 +173,41 @@ TEST_RUN_ENV_TEMPLATE_2 = {
     },
 }
 
+TEST_RUN_ENV_TEMPLATE_FAILS_ENTER = {
+    "specificationVersion": "environment-2023-09",
+    "environment": {
+        "name": "EnvEnterFail",
+        "script": {
+            "actions": {
+                "onEnter": {
+                    "command": "python",
+                    "args": ["-c", "import sys; print('EnvEnterFail Enter'); sys.exit(1)"],
+                },
+                "onExit": {"command": "python", "args": ["-c", "print('EnvEnterFail Exit')"]},
+            }
+        },
+    },
+}
+
+TEST_RUN_ENV_TEMPLATE_FAILS_EXIT = {
+    "specificationVersion": "environment-2023-09",
+    "environment": {
+        "name": "EnvExitFail",
+        "script": {
+            "actions": {
+                "onEnter": {"command": "python", "args": ["-c", "print('EnvExitFail Enter')"]},
+                "onExit": {
+                    "command": "python",
+                    "args": ["-c", "import sys; print('EnvExitFail Exit'); sys.exit(1)"],
+                },
+            }
+        },
+    },
+}
+
 
 @pytest.mark.parametrize(
-    "job_template,env_templates,step_name,task_params,run_dependencies,expected_output,expected_not_in_output",
+    "job_template,env_templates,step_name,task_params,run_dependencies,expected_output,expected_not_in_output,expect_system_exit",
     [
         pytest.param(
             TEST_RUN_JOB_TEMPLATE_BASIC,
@@ -187,6 +219,7 @@ TEST_RUN_ENV_TEMPLATE_2 = {
                 r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit"
             ),
             "",
+            False,
             id="RunFirstStep",
         ),
         pytest.param(
@@ -199,6 +232,7 @@ TEST_RUN_ENV_TEMPLATE_2 = {
                 r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*FirstS Exit.*J2 Exit.*J1 Exit"
             ),
             "Foo=1. Bar=Bar2",
+            False,
             id="RunSelectTask",
         ),
         pytest.param(
@@ -211,6 +245,7 @@ TEST_RUN_ENV_TEMPLATE_2 = {
                 r"J1 Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"
             ),
             "",
+            False,
             id="RunSecondStepWithDep",
         ),
         pytest.param(
@@ -221,6 +256,7 @@ TEST_RUN_ENV_TEMPLATE_2 = {
             False,  # run_dependencies
             re.compile(r"J1 Enter.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"),
             "Foo=1. Bar=Bar1",
+            False,
             id="RunSecondStepNoDep",
         ),
         pytest.param(
@@ -233,6 +269,7 @@ TEST_RUN_ENV_TEMPLATE_2 = {
                 r"Env1 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env1 Exit"
             ),
             "",
+            False,
             id="WithOneEnv",
         ),
         pytest.param(
@@ -245,7 +282,157 @@ TEST_RUN_ENV_TEMPLATE_2 = {
                 r"Env1 Enter.*Env2 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env2 Exit.*Env1 Exit"
             ),
             "",
+            False,
             id="WithTwoEnvs",
+        ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "Test",
+                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+                "steps": [
+                    {
+                        "name": "SimpleStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "print('DoTask')"],
+                                }
+                            }
+                        },
+                    }
+                ],
+            },
+            [TEST_RUN_ENV_TEMPLATE_FAILS_ENTER],  # Env Templates
+            "SimpleStep",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            re.compile(r"EnvEnterFail Enter.*EnvEnterFail Exit"),
+            # We should not run the task
+            "DoTask",
+            True,
+            id="EnterEnvFails",
+        ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "Test",
+                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+                "steps": [
+                    {
+                        "name": "SimpleStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "print('DoTask')"],
+                                }
+                            }
+                        },
+                    }
+                ],
+            },
+            [TEST_RUN_ENV_TEMPLATE_FAILS_ENTER, TEST_RUN_ENV_TEMPLATE_1],  # Env Templates
+            "SimpleStep",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            re.compile(r"EnvEnterFail Enter.*EnvEnterFail Exit"),
+            # We should not run the second environment
+            "Env1 Enter",
+            True,
+            id="EnterEnvFails_2",
+        ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "Test",
+                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+                "steps": [
+                    {
+                        "name": "SimpleStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "import sys; print('DoTask'); sys.exit(1)"],
+                                }
+                            }
+                        },
+                    }
+                ],
+            },
+            [TEST_RUN_ENV_TEMPLATE_1],  # Env Templates
+            "SimpleStep",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            # Task fails; we should still run everything
+            re.compile(r"Env1 Enter.*DoTask.*Env1 Exit"),
+            "",
+            True,
+            id="TaskFails",
+        ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "Test",
+                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+                "steps": [
+                    {
+                        "name": "SimpleStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "print('DoTask')"],
+                                }
+                            }
+                        },
+                    }
+                ],
+            },
+            [TEST_RUN_ENV_TEMPLATE_FAILS_EXIT],  # Env Templates
+            "SimpleStep",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            re.compile(
+                # environment exit fails; we still run everything
+                r"EnvExitFail Enter.*DoTask.*EnvExitFail Exit"
+            ),
+            "",
+            True,
+            id="EnvExitFails",
+        ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "Test",
+                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+                "steps": [
+                    {
+                        "name": "SimpleStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "print('DoTask')"],
+                                }
+                            }
+                        },
+                    }
+                ],
+            },
+            [TEST_RUN_ENV_TEMPLATE_1, TEST_RUN_ENV_TEMPLATE_FAILS_EXIT],  # Env Templates
+            "SimpleStep",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            re.compile(
+                # environment exit fails; we still run everything
+                r"Env1 Enter.*EnvExitFail Enter.*DoTask.*EnvExitFail Exit.*Env1 Exit"
+            ),
+            "",
+            True,
+            id="EnvExitFails_2",
         ),
     ],
 )
@@ -257,6 +444,7 @@ def test_do_run_success(
     run_dependencies: bool,
     expected_output: re.Pattern[str],
     expected_not_in_output: str,
+    expect_system_exit: bool,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that the 'run' command correctly runs templates and obtains the expected results."""
@@ -295,7 +483,12 @@ def test_do_run_success(
         )
 
         # WHEN
-        do_run(args)
+        try:
+            do_run(args)
+        except SystemExit:
+            assert expect_system_exit
+        else:
+            assert not expect_system_exit
 
         # THEN
         assert not any(
