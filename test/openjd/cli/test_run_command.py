@@ -434,6 +434,39 @@ TEST_RUN_ENV_TEMPLATE_FAILS_EXIT = {
             True,
             id="EnvExitFails_2",
         ),
+        pytest.param(
+            {
+                "specificationVersion": "jobtemplate-2023-09",
+                "name": "TimeoutTest",
+                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
+                "steps": [
+                    {
+                        "name": "Timeout",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": [
+                                        "-c",
+                                        # Obfuscate "EXIT_NORMAL" so it doesn't appear in the log when Windows prints the command that's run to the log.
+                                        "import time,sys; print('SLEEP'); sys.stdout.flush(); time.sleep(5); print(chr(69)+'XIT_NORMAL')",
+                                    ],
+                                    "timeout": 2,
+                                }
+                            }
+                        },
+                    }
+                ],
+            },
+            [],  # Env Templates
+            "Timeout",  # step name
+            [],  # Task params
+            False,  # run_dependencies
+            re.compile(r"SLEEP"),
+            "EXIT_NORMAL",
+            True,
+            id="TaskTimeout",
+        ),
     ],
 )
 def test_do_run_success(

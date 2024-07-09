@@ -376,7 +376,7 @@ class LocalSession:
             if isinstance(self._current_action, RunTaskAction):
                 self.tasks_run += 1
             self._action_ended.set()
-        if new_status.state in (ActionState.FAILED, ActionState.CANCELED):
+        if new_status.state in (ActionState.FAILED, ActionState.CANCELED, ActionState.TIMEOUT):
             self.failed = True
             self._action_ended.set()
 
