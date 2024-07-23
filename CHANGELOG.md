@@ -1,3 +1,11 @@
+## 0.4.4 (2024-07-23)
+
+
+
+### Bug Fixes
+* run command exits when an action reaches timeout (#97) ([`d031a91`](https://github.com/OpenJobDescription/openjd-cli/commit/d031a91ee6d1796b33701c466dc52f5615ead3c6))
+* run subcommand now exits all entered environments (#98) ([`f6a54b2`](https://github.com/OpenJobDescription/openjd-cli/commit/f6a54b20d5058b4c144b237c960212d9e9c5d2be))
+
 ## 0.4.3 (2024-04-16)
 
 ### Documenation
