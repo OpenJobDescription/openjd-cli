@@ -2,7 +2,7 @@
 
 from openjd.cli._schema._schema_command import do_get_schema, _process_regex
 from openjd.model import TemplateSpecificationVersion
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 from argparse import Namespace
 import json
