@@ -1,3 +1,10 @@
+## 0.5.0 (2024-11-13)
+
+
+### Features
+* **deps**: Update openjd-model to 0.5.* and openjd-session to 0.9.* (#118) ([`ef97dd8`](https://github.com/OpenJobDescription/openjd-cli/commit/ef97dd81e9dfc2e45a9c2605ae256b679961cd7b))
+
+
 ## 0.4.4 (2024-07-23)
 
 
