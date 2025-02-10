@@ -62,7 +62,7 @@ def read_job_template(template_file: Path) -> JobTemplate:
     template_object = read_template(template_file)
 
     # Raises: DecodeValidationError
-    template = decode_job_template(template=template_object)
+    template = decode_job_template(template=template_object, supported_extensions=["TASK_CHUNKING"])
 
     return template
 

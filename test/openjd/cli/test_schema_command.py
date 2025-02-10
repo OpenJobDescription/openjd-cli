@@ -2,7 +2,7 @@
 
 from openjd.cli._schema._schema_command import do_get_schema, _process_regex
 from openjd.model import TemplateSpecificationVersion
-from pydantic.v1 import BaseModel
+import openjd.model.v2023_09
 
 from argparse import Namespace
 import json
@@ -129,9 +129,10 @@ def test_do_get_schema_error(capsys: pytest.CaptureFixture):
     """
 
     with (
-        patch.object(BaseModel, "schema", side_effect=RuntimeError("Test error")),
+        patch.object(openjd.model.v2023_09, "JobTemplate") as job_template_class,
         pytest.raises(SystemExit),
     ):
+        job_template_class.model_json_schema.side_effect = RuntimeError("Test error")
         do_get_schema(
             Namespace(
                 version=TemplateSpecificationVersion.JOBTEMPLATE_v2023_09.value,

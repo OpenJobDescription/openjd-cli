@@ -69,9 +69,10 @@ def add_run_arguments(run_parser: ArgumentParser):
         dest="task_params",
         metavar="PARAM=VALUE",
         help=(
-            "This argument instructs the command to run a single task in a Session with the given value for one of the task parameters "
-            "defined for the Step. The option must be provided once for each task parameter defined for the Step, with each instance "
-            "providing the value for a different task parameter. Mutually exclusive with --tasks and --maximum-tasks."
+            "This argument instructs the command to run a single task or chunk of tasks in a Session with the given value for "
+            "one of the task parameters defined for the Step. The option must be provided once for each task parameter defined "
+            "for the Step, with each instance providing the value for a different task parameter. Mutually exclusive with "
+            "--tasks and --maximum-tasks."
         ),
     )
     group.add_argument(
@@ -81,9 +82,9 @@ def add_run_arguments(run_parser: ArgumentParser):
         dest="tasks",
         metavar='file://tasks.json OR file://tasks.yaml OR [{"Param": "Value1", ...}, {"Param": "Value2", ...}]',
         help=(
-            "This argument instructs the command to run one or more tasks for the Step in a Session. The argument must be either "
-            "the filename of a JSON or YAML file containing an array of maps from task parameter name to value; or an inlined "
-            "JSON string of the same. Mutually exclusive with --task-param/-tp and --maximum-tasks."
+            "This argument instructs the command to run one or more tasks/chunks of tasks for the Step in a Session. "
+            "The argument must be either the filename of a JSON or YAML file containing an array of maps from task parameter "
+            "name to value; or an inlined JSON string of the same. Mutually exclusive with --task-param/-tp and --maximum-tasks."
         ),
     )
     group.add_argument(
@@ -206,10 +207,8 @@ def _process_task_params(arguments: list[str]) -> dict[str, str]:
             )
 
     if error_list:
-        error_msg = "Found the following errors collecting Task parameters:"
-        for error in error_list:
-            error_msg += f"\n- {error}"
-        raise RuntimeError(error_msg)
+        error_msgs = "".join(f"\n - {error}" for error in error_list)
+        raise RuntimeError("Found the following errors collecting Task parameters:" + error_msgs)
 
     return parameter_set
 
@@ -278,8 +277,8 @@ def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None
 
     # Collect the names of all of the task parameters defined in the step.
     if step.parameterSpace is not None:
-        parameter_space = StepParameterSpaceIterator(space=step.parameterSpace)
-        task_parameter_names: set[str] = set(parameter_space.names)
+        param_space_iter = StepParameterSpaceIterator(space=step.parameterSpace)
+        task_parameter_names: set[str] = set(param_space_iter.names)
     else:
         task_parameter_names = set[str]()
 
@@ -298,7 +297,6 @@ def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None
             error_list.append(
                 f"Task {i} is missing values for parameters: {', '.join(sorted(missing_names))}"
             )
-
     if error_list:
         error_msg = "Errors defining task parameter values:\n - "
         error_msg += "\n - ".join(error_list)

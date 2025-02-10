@@ -26,7 +26,7 @@ from openjd.cli._common import (
 from openjd.cli._common._job_from_template import job_from_template
 from openjd.model import (
     DecodeValidationError,
-    decode_template,
+    decode_job_template,
 )
 
 
@@ -364,11 +364,13 @@ def test_job_from_template_success(
     Test that `job_from_template` creates a Job with the provided parameters.
     """
     template_dir, current_working_dir = template_dir_and_cwd
-    template = decode_template(template=template_dict)
+    template = decode_job_template(template=template_dict)
 
     result = job_from_template(template, mock_params, template_dir, current_working_dir)
     assert result.name == expected_job_name
-    assert result.steps == template.steps
+    assert [step.model_dump(exclude_none=True) for step in result.steps] == [
+        step.model_dump(exclude_none=True) for step in template.steps
+    ]
     if result.parameters:
         assert len(result.parameters) == len(mock_params)
 
@@ -410,7 +412,7 @@ def test_job_from_template_error(
     """
     template_dir, current_working_dir = template_dir_and_cwd
 
-    template = decode_template(template=template_dict)
+    template = decode_job_template(template=template_dict)
 
     with pytest.raises(RuntimeError) as rte:
         job_from_template(template, mock_params, template_dir, current_working_dir)

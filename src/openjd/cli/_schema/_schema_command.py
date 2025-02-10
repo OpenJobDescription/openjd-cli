@@ -59,10 +59,7 @@ def do_get_schema(args: Namespace) -> OpenJDCliResult:
     schema_doc: dict = {}
 
     try:
-        # The `schema` attribute will have to be updated if/when Pydantic
-        # is updated to v2.
-        # (AFAIK it can be replaced with `model_json_schema()`.)
-        schema_doc = Template.schema()
+        schema_doc = Template.model_json_schema()
         _process_regex(schema_doc)
     except Exception as e:
         return OpenJDCliResult(status="error", message=f"ERROR generating schema: {str(e)}")
