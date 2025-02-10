@@ -27,7 +27,7 @@ def do_check(args: Namespace) -> OpenJDCliResult:
 
         # Raises: DecodeValidationError
         if TemplateSpecificationVersion.is_job_template(template_version):
-            decode_job_template(template=template_object)
+            decode_job_template(template=template_object, supported_extensions=["TASK_CHUNKING"])
         elif TemplateSpecificationVersion.is_environment_template(template_version):
             decode_environment_template(template=template_object)
         else:
