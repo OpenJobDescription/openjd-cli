@@ -1,6 +1,9 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 from argparse import ArgumentParser
+import sys
+import traceback
+from typing import Optional
 
 from ._common import SubparserGroup
 
@@ -28,3 +31,21 @@ def create_argparser() -> ArgumentParser:
     populate_run_subparser(subcommands)
     populate_schema_subparser(subcommands)
     return parser
+
+
+def main(arg_list: Optional[list[str]] = None) -> None:
+    """Main function for invoking the CLI"""
+    parser = create_argparser()
+
+    if arg_list is None:
+        arg_list = sys.argv[1:]
+
+    args = parser.parse_args(arg_list)
+    try:
+        # Raises:
+        #  SystemExit - on failure
+        args.func(args)
+    except Exception as exc:
+        print(f"ERROR: {str(exc)}", file=sys.stderr)
+        traceback.print_exc()
+        sys.exit(1)

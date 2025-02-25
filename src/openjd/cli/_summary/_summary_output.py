@@ -26,7 +26,7 @@ def _format_summary_list(data: list, padding: int = 0) -> str:
     """
     formatted_list: str = ""
     for item in data:
-        formatted_list += "\t" * padding + f"- {str(item)}\n"
+        formatted_list += " " * padding + f"- {str(item)}\n"
 
     return formatted_list
 
@@ -64,7 +64,7 @@ class EnvironmentSummary:
     def __str__(self) -> str:
         readable_string = f"{self.name} (from '{self.parent}')"
         if self.description:
-            readable_string += f"\n\t{self.description}"
+            readable_string += f"\n {self.description}"
 
         return readable_string
 
@@ -96,18 +96,18 @@ class StepSummary:
     dependencies: Optional[list[DependencySummary]]
 
     def __str__(self) -> str:
-        summary_str = f"'{self.name}'\n"
+        summary_str = f"'{self.name}' ({self.total_tasks} total Tasks)\n"
 
         if self.parameter_definitions:
-            summary_str += f"\t{len(self.parameter_definitions)} Task parameter(s)\n"
-
-        summary_str += f"\t{self.total_tasks} total Tasks\n"
+            summary_str += (
+                f"  Task parameters:\n{_format_summary_list(self.parameter_definitions, padding=4)}"
+            )
 
         if self.environments:
-            summary_str += f"\t{len(self.environments)} environments\n"
+            summary_str += f"  {len(self.environments)} environments\n"
 
         if self.dependencies:
-            summary_str += f"\t{len(self.dependencies)} dependencies\n"
+            summary_str += f"  {len(self.dependencies)} dependencies\n"
 
         return summary_str
 
@@ -132,7 +132,7 @@ class OpenJDJobSummaryResult(OpenJDCliResult):
         # For each parameter, print its name and its value (may be default or user-provided)
         if self.parameter_definitions:
             summary_str += (
-                f"\nParameters:\n{_format_summary_list(self.parameter_definitions, padding=1)}"
+                f"\nParameters:\n{_format_summary_list(self.parameter_definitions, padding=2)}"
             )
 
         summary_str += f"""
@@ -148,11 +148,11 @@ Total environments: {self.total_environments}
         if self.total_environments:
             summary_str += f"\n--- Environments in '{self.name}' ---\n"
             if self.root_environments:
-                summary_str += _format_summary_list(self.root_environments)
+                summary_str += _format_summary_list(self.root_environments, padding=2)
 
             for step in self.steps:
                 if step.environments:
-                    summary_str += _format_summary_list(step.environments)
+                    summary_str += _format_summary_list(step.environments, padding=2)
 
         return summary_str
 
@@ -209,10 +209,12 @@ def _get_step_summary(step: Step) -> StepSummary:
         parameter_definitions = _populate_summary_list(
             [(name, param) for name, param in step.parameterSpace.taskParameterDefinitions.items()],
             lambda param_tuple: ParameterSummary(
-                name=param_tuple[0], description=None, type=param_tuple[1].type.name, value=None
+                name=param_tuple[0], description=None, type=param_tuple[1].type.value, value=None
             ),
         )
-        total_tasks = len(StepParameterSpaceIterator(space=step.parameterSpace))
+        total_tasks = len(
+            StepParameterSpaceIterator(space=step.parameterSpace, chunks_task_count_override=1)
+        )
 
     environments = []
     if step.stepEnvironments:

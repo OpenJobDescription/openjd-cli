@@ -1,0 +1,15 @@
+specificationVersion: environment-2023-09
+environment:
+  name: EnvEnterFail
+  script:
+    actions:
+      onEnter:
+        command: python
+        args:
+        - -c
+        - import sys; print('EnvEnterFail Enter'); sys.exit(1)
+      onExit:
+        command: python
+        args:
+        - -c
+        - print('EnvEnterFail Exit')

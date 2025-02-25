@@ -1,0 +1,130 @@
+# Catch-all sample template with different cases per Step
+specificationVersion: jobtemplate-2023-09
+name: my-job
+parameterDefinitions:
+- name: Message
+  type: STRING
+  default: Hello, world!
+jobEnvironments:
+- name: rootEnv
+  variables:
+    rootVar: rootVal
+steps:
+# VALID STEPS
+# Basic step; uses Job parameters and has an environment
+- name: NormalStep
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('{{Param.Message}}')
+  stepEnvironments:
+  - name: env1
+    script:
+      actions:
+        onEnter:
+          command: python
+          args:
+          - -c
+          - print('EnteringEnv')
+# Step that will wait for one minute before completing its Task
+- name: LongCommand
+  script:
+    actions:
+      onRun:
+        command: sleep
+        args:
+        - '60'
+# Step with the bare minimum information, i.e., no Task parameters, environments, or dependencies
+- name: BareStep
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('zzz')
+# Step with a direct dependency on a previous Step
+- name: DependentStep
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('I am dependent!')
+  dependencies:
+  - dependsOn: BareStep
+# Step with Task parameters
+- name: TaskParamStep
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: TaskNumber
+      type: INT
+      range:
+      - 1
+      - 2
+      - 3
+    - name: TaskMessage
+      type: STRING
+      range:
+      - Hi!
+      - Bye!
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('{{Task.Param.TaskNumber}}.{{Task.Param.TaskMessage}}')
+# Step with a transitive dependency and a direct dependency
+- name: ExtraDependentStep
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('I am extra dependent!')
+  dependencies:
+  - dependsOn: DependentStep
+  - dependsOn: TaskParamStep
+# Step with dependencies and Task parameters
+- name: DependentParamStep
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Adjective
+      type: STRING
+      range:
+      - really
+      - very
+      - super
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('I am {{Task.Param.Adjective}} dependent!')
+  dependencies:
+  - dependsOn: TaskParamStep
+# Step whose dependency has a step environment
+- name: StepDepHasStepEnv
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('I have a dependency with a step environment!')
+  dependencies:
+  - dependsOn: NormalStep
+# ERROR STEPS
+# Step with a non-existent command that will throw an error when run
+- name: BadCommand
+  script:
+    actions:
+      onRun:
+        command: aaaaaaaaaa

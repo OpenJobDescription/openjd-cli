@@ -22,13 +22,13 @@ This library requires:
 
 ## Versioning
 
-This package's version follows [Semantic Versioning 2.0](https://semver.org/), but is still considered to be in its 
+This package's version follows [Semantic Versioning 2.0](https://semver.org/), but is still considered to be in its
 initial development, thus backwards incompatible versions are denoted by minor version bumps. To help illustrate how
 versions will increment during this initial development stage, they are described below:
 
-1. The MAJOR version is currently 0, indicating initial development. 
-2. The MINOR version is currently incremented when backwards incompatible changes are introduced to the public API. 
-3. The PATCH version is currently incremented when bug fixes or backwards compatible changes are introduced to the public API. 
+1. The MAJOR version is currently 0, indicating initial development.
+2. The MINOR version is currently incremented when backwards incompatible changes are introduced to the public API.
+3. The PATCH version is currently incremented when bug fixes or backwards compatible changes are introduced to the public API.
 
 ## Contributing
 
@@ -64,7 +64,7 @@ Template at '/path/to/job.template.json' passes validation checks!
 
 ### `summary`
 
-Displays summary information about a sample Job or Step, and the Steps and Tasks therein. The user may provide parameters to 
+Displays summary information about a sample Job or Step, and the Steps and Tasks therein. The user may provide parameters to
 customize the Job, as parameters can have an impact on the amount of Steps and Tasks that a job consists of.
 
 #### Arguments
@@ -145,7 +145,7 @@ Session ended successfully
 Job: MyJob
 Step: Step1
 Duration: 1.0 seconds
-Tasks run: 1
+Chunks run: 1
 
 ```
 
@@ -181,11 +181,11 @@ See [VERIFYING_PGP_SIGNATURE](VERIFYING_PGP_SIGNATURE.md) for more information.
 
 ## Security
 
-We take all security reports seriously. When we receive such reports, we will 
-investigate and subsequently address any potential vulnerabilities as quickly 
-as possible. If you discover a potential security issue in this project, please 
+We take all security reports seriously. When we receive such reports, we will
+investigate and subsequently address any potential vulnerabilities as quickly
+as possible. If you discover a potential security issue in this project, please
 notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/)
-or directly via email to [AWS Security](aws-security@amazon.com). Please do not 
+or directly via email to [AWS Security](aws-security@amazon.com). Please do not
 create a public GitHub issue in this project.
 
 ## License

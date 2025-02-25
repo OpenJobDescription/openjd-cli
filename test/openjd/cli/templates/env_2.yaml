@@ -1,0 +1,15 @@
+specificationVersion: environment-2023-09
+environment:
+  name: Env2
+  script:
+    actions:
+      onEnter:
+        command: python
+        args:
+        - -c
+        - print('Env2 Enter')
+      onExit:
+        command: python
+        args:
+        - -c
+        - print('Env2 Exit')

@@ -9,6 +9,7 @@ import json
 import yaml
 import os
 
+from ._extensions import add_extensions_argument, process_extensions_argument
 from ._job_from_template import (
     job_from_template,
     get_job_params,
@@ -23,9 +24,11 @@ from ._validation_utils import (
 from openjd.model import DecodeValidationError, Job
 
 __all__ = [
+    "add_extensions_argument",
     "get_doc_type",
     "get_job_params",
     "get_params_from_file",
+    "process_extensions_argument",
     "read_template",
     "read_job_template",
     "read_environment_template",
@@ -109,10 +112,10 @@ class SubparserGroup:
         return self.group.add_parser(name, **kwargs)
 
 
-def generate_job(args: Namespace) -> Job:
+def generate_job(args: Namespace, *, supported_extensions: list[str]) -> Job:
     try:
         # Raises: RuntimeError, DecodeValidationError
-        template = read_job_template(args.path)
+        template = read_job_template(args.path, supported_extensions=supported_extensions)
         # Raises: RuntimeError
         return job_from_template(
             template,

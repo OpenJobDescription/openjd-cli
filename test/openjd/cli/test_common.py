@@ -132,7 +132,7 @@ def test_read_job_template_parsingerror(tempfile_extension: str, file_contents: 
 
     mock_args = Path(temp_template.name)
     with pytest.raises(DecodeValidationError) as re:
-        read_job_template(mock_args)
+        read_job_template(mock_args, supported_extensions=[])
 
     assert "validation errors for JobTemplate" in str(re.value)
 
@@ -454,7 +454,7 @@ def test_generate_job_success(
         "openjd.cli._common.job_from_template",
         new=Mock(side_effect=job_from_template),
     ) as patched_job_from_template:
-        generate_job(mock_args)
+        generate_job(mock_args, supported_extensions=[])
         patched_job_from_template.assert_called_once_with(
             ANY, expected_param_list, Path(temp_template.name).parent, Path(os.getcwd())
         )
@@ -500,6 +500,6 @@ def test_generate_job_raises(
         )
 
     with pytest.raises(RuntimeError) as excinfo:
-        generate_job(args)
+        generate_job(args, supported_extensions=[])
 
     assert expected_error in str(excinfo.value)

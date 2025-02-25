@@ -5,8 +5,13 @@ from unittest.mock import call, patch
 import signal
 
 from . import SampleSteps, SESSION_PARAMETERS
+from openjd.model import StepParameterSpaceIterator
 from openjd.sessions import Session, SessionState
-from openjd.cli._run._local_session._session_manager import LocalSession
+from openjd.cli._run._local_session._session_manager import (
+    LocalSession,
+    EnvironmentType,
+    LocalSessionFailed,
+)
 import openjd.cli._run._local_session._session_manager as local_session_mod
 
 
@@ -44,90 +49,43 @@ def patched_actions():
 
 
 @pytest.mark.usefixtures("sample_job_and_dirs")
-@pytest.mark.parametrize(
-    "given_parameters,expected_parameters",
-    [
-        pytest.param(
-            {"TaskNumber": 5, "TaskMessage": "Hello!"},
-            {"TaskNumber": "5", "TaskMessage": "Hello!"},
-            id="All parameters provided",
-        ),
-        pytest.param(
-            {"TaskMessage": "Hello!"},
-            {"TaskNumber": "1", "TaskMessage": "Hello!"},
-            id="Some parameters provided",
-        ),
-        pytest.param(
-            {"FakeParameter": "Hello!", "TaskNumber": 5},
-            {"TaskNumber": "5", "TaskMessage": "Hi!"},
-            id="Unused parameter name",
-        ),
-        pytest.param(
-            {"FakeInt": 5, "FakeStr": "Hello!"},
-            {"TaskNumber": "1", "TaskMessage": "Hi!"},
-            id="Only unused parameter names",
-        ),
-    ],
-)
-def test_generate_task_parameter_set(
-    sample_job_and_dirs: tuple, given_parameters: dict, expected_parameters: dict
-):
-    """
-    Test that a LocalSession can generate Task parameters given valid user input.
-    """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
-    with LocalSession(job=sample_job, session_id="my-session") as session:
-        # Convince the type checker that `parameterSpace` exists
-        param_space = sample_job.steps[SampleSteps.TaskParamStep].parameterSpace
-        if param_space:
-            parameter_set = session._generate_task_parameter_set(
-                parameter_space=param_space,
-                parameter_values=given_parameters,
-            )
-
-            assert all(
-                [param.value == expected_parameters[name] for name, param in parameter_set.items()]
-            )
-
-
-@pytest.mark.usefixtures("sample_job_and_dirs")
 @pytest.mark.parametrize(*SESSION_PARAMETERS)
 def test_localsession_initialize(
     sample_job_and_dirs: tuple,
-    dependency_indexes: list[int],
     step_index: int,
     maximum_tasks: int,
     parameter_sets: list[dict],
-    num_expected_environments: int,
     num_expected_tasks: int,
 ):
     """
-    Test that initializing the local Session clears the `ended` flag, only generates Task parameters
-    when necessary, and adds to the Action queue appropriately.
+    Test that initializing the local Session enters external and job environments, and is ready to run tasks.
     """
     sample_job, template_dir, current_working_dir = sample_job_and_dirs
-    with LocalSession(job=sample_job, session_id="my-session") as session:
-        with patch.object(
+    with (
+        patch.object(
             LocalSession,
-            "_generate_task_parameter_set",
+            "run_environment_enters",
             autospec=True,
-            side_effect=LocalSession._generate_task_parameter_set,
-        ) as patched_generate_params:
-            session.initialize(
-                dependencies=[sample_job.steps[i] for i in dependency_indexes],
-                step=sample_job.steps[step_index],
-                maximum_tasks=maximum_tasks,
-                task_parameter_values=parameter_sets,
+            side_effect=LocalSession.run_environment_enters,
+        ) as patched_run_environment_enters,
+        patch.object(
+            LocalSession, "run_step", autospec=True, side_effect=LocalSession.run_step
+        ) as patched_run_step,
+    ):
+        with LocalSession(job=sample_job, session_id="my-session") as session:
+            assert session._openjd_session.state == SessionState.READY
+
+            # It should have entered the external and job environments in order
+            assert patched_run_environment_enters.call_count == 2
+            assert patched_run_environment_enters.call_args_list[0] == call(
+                session, None, EnvironmentType.EXTERNAL
+            )
+            assert patched_run_environment_enters.call_args_list[1] == call(
+                session, sample_job.jobEnvironments, EnvironmentType.JOB
             )
 
-        if parameter_sets and sample_job.steps[step_index].parameterSpace:
-            patched_generate_params.assert_called()
-        else:
-            patched_generate_params.assert_not_called()
-
-        assert not session.ended.is_set()
-        assert session._enter_env_queue.qsize() == num_expected_environments
-        assert session._action_queue.qsize() == num_expected_tasks
+            # It should not have run any steps
+            assert patched_run_step.call_count == 0
 
 
 @pytest.mark.usefixtures("sample_job_and_dirs")
@@ -158,55 +116,75 @@ def test_localsession_traps_sigint(sample_job_and_dirs: tuple):
 def test_localsession_run_success(
     sample_job_and_dirs: tuple,
     capsys: pytest.CaptureFixture,
-    dependency_indexes: list[int],
     step_index: int,
     maximum_tasks: int,
     parameter_sets: list[dict],
-    num_expected_environments: int,
     num_expected_tasks: int,
 ):
     """
-    Test that calling `run` causes the local Session to
-    iterate through the actions defined in the Job.
+    Test that calling `run_step` causes the local Session to run the tasks requested in that step.
     """
     sample_job, template_dir, current_working_dir = sample_job_and_dirs
-    with LocalSession(job=sample_job, session_id="my-session") as session:
-        session.initialize(
-            dependencies=[sample_job.steps[i] for i in dependency_indexes],
-            step=sample_job.steps[step_index],
-            maximum_tasks=maximum_tasks,
-            task_parameter_values=parameter_sets,
+
+    if parameter_sets is None:
+        parameter_sets = StepParameterSpaceIterator(
+            space=sample_job.steps[step_index].parameterSpace
         )
 
-        session.run()
-        session.ended.wait()
+    with (
+        patch.object(
+            LocalSession,
+            "run_environment_enters",
+            autospec=True,
+            side_effect=LocalSession.run_environment_enters,
+        ) as patched_run_environment_enters,
+        patch.object(
+            LocalSession,
+            "run_environment_exits",
+            autospec=True,
+            side_effect=LocalSession.run_environment_exits,
+        ) as patched_run_environment_exits,
+        patch.object(
+            LocalSession, "run_step", autospec=True, side_effect=LocalSession.run_step
+        ) as patched_run_step,
+        patch.object(
+            LocalSession, "run_task", autospec=True, side_effect=LocalSession.run_task
+        ) as patched_run_task,
+    ):
+        with LocalSession(job=sample_job, session_id="my-session") as session:
+            session.run_step(
+                sample_job.steps[step_index],
+                task_parameters=parameter_sets,
+                maximum_tasks=maximum_tasks,
+            )
 
-    assert session.tasks_run == num_expected_tasks  # type: ignore
-    assert session.get_duration() > 0  # type: ignore
-    assert session._inner_session.enter_environment.call_count == num_expected_environments  # type: ignore
-    assert session._inner_session.run_task.call_count == num_expected_tasks  # type: ignore
-    assert session._inner_session.exit_environment.call_count == num_expected_environments  # type: ignore
-    session._action_callback.assert_called()  # type: ignore
-    assert session._cleanup_called
-    assert (
-        "Open Job Description CLI: All actions completed successfully!" in capsys.readouterr().out
-    )
+        # It should have entered the environments in order
+        assert patched_run_environment_enters.call_args_list == [
+            call(session, None, EnvironmentType.EXTERNAL),
+            call(session, sample_job.jobEnvironments, EnvironmentType.JOB),
+            call(session, sample_job.steps[step_index].stepEnvironments, EnvironmentType.STEP),
+        ]
+        # It should have run one step
+        assert patched_run_step.call_args_list == [
+            call(
+                session,
+                sample_job.steps[step_index],
+                task_parameters=parameter_sets,
+                maximum_tasks=maximum_tasks,
+            )
+        ]
+        # It should have exited the environments in reverse order
+        assert patched_run_environment_exits.call_args_list == [
+            call(session, type=EnvironmentType.STEP, keep_session_running=True),
+            call(session, type=EnvironmentType.ALL, keep_session_running=False),
+        ]
 
+        assert patched_run_task.call_count == num_expected_tasks
 
-@pytest.mark.usefixtures("sample_job_and_dirs")
-def test_localsession_run_not_ready(sample_job_and_dirs: tuple):
-    """
-    Test that a LocalSession throws an error when it is not in the "READY" state.
-    """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
-    with LocalSession(job=sample_job, session_id="my-session") as session:
-        with (
-            patch.object(Session, "state", new=SessionState.ENDED),
-            pytest.raises(RuntimeError) as rte,
-        ):
-            session.run()
-
-    assert "not in a READY state" in str(rte.value)
+        assert (
+            "Open Job Description CLI: All actions completed successfully!"
+            in capsys.readouterr().out
+        )
 
 
 @pytest.mark.usefixtures("sample_job_and_dirs", "capsys")
@@ -215,14 +193,29 @@ def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.Capt
     Test that a LocalSession can gracefully handle an error in its inner Session.
     """
     sample_job, template_dir, current_working_dir = sample_job_and_dirs
-    with LocalSession(job=sample_job, session_id="bad-session") as session:
-        session.initialize(dependencies=[], step=sample_job.steps[SampleSteps.BadCommand])
-        session.run()
-        session.ended.wait()
+    with (
+        patch.object(
+            LocalSession,
+            "run_environment_enters",
+            autospec=True,
+            side_effect=LocalSession.run_environment_enters,
+        ) as patched_run_environment_enters,
+    ):
+        with LocalSession(job=sample_job, session_id="bad-session") as session:
+            with pytest.raises(LocalSessionFailed):
+                session.run_step(sample_job.steps[SampleSteps.BadCommand])
 
-    # The Task has failed. That means that we've entered the one environment and also exited it.
-    session._inner_session.enter_environment.assert_called_once()  # type: ignore
-    session._inner_session.exit_environment.assert_called_once()  # type: ignore
-    assert session.failed
-    assert session._cleanup_called
-    assert "Open Job Description CLI: ERROR" in capsys.readouterr().out
+        # The Task has failed. That means that we've entered the one environment and also exited it.
+        assert patched_run_environment_enters.call_args_list == [
+            call(session, None, EnvironmentType.EXTERNAL),
+            call(session, sample_job.jobEnvironments, EnvironmentType.JOB),
+            call(
+                session,
+                sample_job.steps[SampleSteps.BadCommand].stepEnvironments,
+                EnvironmentType.STEP,
+            ),
+        ]
+        session._openjd_session.exit_environment.assert_called_once()  # type: ignore
+        assert session.failed
+        assert session._cleanup_called
+        assert "Open Job Description CLI: ERROR" in capsys.readouterr().out

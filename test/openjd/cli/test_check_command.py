@@ -28,7 +28,7 @@ def test_do_check_file_success(tempfile_extension: str, doc_serializer: Callable
     ) as temp_template:
         doc_serializer(MOCK_TEMPLATE, temp_template.file)
 
-        mock_args = Namespace(path=Path(temp_template.name), output="human-readable")
+        mock_args = Namespace(path=Path(temp_template.name), output="human-readable", extensions="")
     do_check(mock_args)
 
     Path(temp_template.name).unlink()
@@ -41,7 +41,7 @@ def test_do_check_file_error():
     in this case we just test an incorrect filename that gets
     handled in read_template)
     """
-    mock_args = Namespace(path=Path("error-file.json"), output="human-readable")
+    mock_args = Namespace(path=Path("error-file.json"), output="human-readable", extensions="")
     with pytest.raises(SystemExit):
         do_check(mock_args)
 
@@ -51,6 +51,6 @@ def test_do_check_bundle_error():
     Test that passing a bundle with no template file yields a SystemError
     """
     with tempfile.TemporaryDirectory() as temp_bundle:
-        mock_args = Namespace(path=Path(temp_bundle), output="human-readable")
+        mock_args = Namespace(path=Path(temp_bundle), output="human-readable", extensions="")
         with pytest.raises(SystemExit):
             do_check(mock_args)

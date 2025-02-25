@@ -53,7 +53,7 @@ def read_template(template_file: Path) -> dict[str, Any]:
     return template_object
 
 
-def read_job_template(template_file: Path) -> JobTemplate:
+def read_job_template(template_file: Path, *, supported_extensions: list[str]) -> JobTemplate:
     """Open a JSON or YAML-formatted file and attempt to parse it into a JobTemplate object.
     Raises a RuntimeError if the file doesn't exist or can't be opened, and raises a
     DecodeValidationError if its contents can't be parsed into a valid JobTemplate.
@@ -62,7 +62,9 @@ def read_job_template(template_file: Path) -> JobTemplate:
     template_object = read_template(template_file)
 
     # Raises: DecodeValidationError
-    template = decode_job_template(template=template_object, supported_extensions=["TASK_CHUNKING"])
+    template = decode_job_template(
+        template=template_object, supported_extensions=supported_extensions
+    )
 
     return template
 

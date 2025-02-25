@@ -1,0 +1,53 @@
+specificationVersion: jobtemplate-2023-09
+name: Job
+parameterDefinitions:
+- name: J
+  type: STRING
+jobEnvironments:
+- name: J1
+  script:
+    actions:
+      onEnter:
+        command: python
+        args:
+        - -c
+        - print('J1 Enter')
+      onExit:
+        command: python
+        args:
+        - -c
+        - print('J1 Exit')
+steps:
+- name: First
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Foo
+      type: INT
+      range: '1'
+    - name: Bar
+      type: STRING
+      range:
+      - Bar1
+      - Bar2
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}')
+- name: Second
+  dependencies:
+  - dependsOn: First
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Fuz
+      type: INT
+      range: 1-2
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('J={{Param.J}} Fuz={{Task.Param.Fuz}}.')
