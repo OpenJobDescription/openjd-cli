@@ -4,15 +4,23 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from typing import Optional
+from typing import Iterable, Optional
 import re
 import logging
+import time
 
-from ._local_session._session_manager import LocalSession, LogEntry
+from ._local_session._session_manager import (
+    LocalSession,
+    LocalSessionFailed,
+    LogEntry,
+    LoggingTimestampFormat,
+)
 from .._common import (
+    add_extensions_argument,
     OpenJDCliResult,
     generate_job,
     get_params_from_file,
+    process_extensions_argument,
     print_cli_result,
     read_environment_template,
 )
@@ -21,7 +29,11 @@ from openjd.model import (
     EnvironmentTemplate,
     Job,
     Step,
+    StepDependencyGraph,
     StepParameterSpaceIterator,
+    ParameterValue,
+    ParameterValueType,
+    TaskParameterSet,
 )
 from openjd.sessions import PathMappingRule, LOG
 
@@ -33,30 +45,30 @@ class OpenJDRunResult(OpenJDCliResult):
     """
 
     job_name: str
-    step_name: str
+    step_name: Optional[str]
     duration: float
-    tasks_run: int
+    chunks_run: int
     logs: list[LogEntry]
 
     def __str__(self) -> str:
+        step_message = ""
+        if self.step_name is not None:
+            step_message = f"Step: {self.step_name}\n"
         return f"""
 --- Results of local session ---
 
 {self.message}
 
 Job: {self.job_name}
-Step: {self.step_name}
-Duration: {self.duration} seconds
-Tasks run: {self.tasks_run}
+{step_message}Duration: {self.duration} seconds
+Chunks run: {self.chunks_run}
 """
 
 
 def add_run_arguments(run_parser: ArgumentParser):
     run_parser.add_argument(
         "--step",
-        action="store",
         type=str,
-        required=True,
         metavar="STEP_NAME",
         help="The name of the Step in the Job to run Tasks from.",
     )
@@ -65,7 +77,6 @@ def add_run_arguments(run_parser: ArgumentParser):
         "--task-param",
         "-tp",
         action="append",
-        type=str,
         dest="task_params",
         metavar="PARAM=VALUE",
         help=(
@@ -77,9 +88,6 @@ def add_run_arguments(run_parser: ArgumentParser):
     )
     group.add_argument(
         "--tasks",
-        action="store",
-        type=str,
-        dest="tasks",
         metavar='file://tasks.json OR file://tasks.yaml OR [{"Param": "Value1", ...}, {"Param": "Value2", ...}]',
         help=(
             "This argument instructs the command to run one or more tasks/chunks of tasks for the Step in a Session. "
@@ -89,7 +97,6 @@ def add_run_arguments(run_parser: ArgumentParser):
     )
     group.add_argument(
         "--maximum-tasks",
-        action="store",
         type=int,
         default=-1,
         help=(
@@ -100,14 +107,17 @@ def add_run_arguments(run_parser: ArgumentParser):
     )
     run_parser.add_argument(
         "--run-dependencies",
-        action="store_const",
-        const=True,
+        action="store_true",
         help="Run the Step along with all of its transitive and direct dependencies.",
     )
     run_parser.add_argument(
+        "--no-run-dependencies",
+        action="store_false",
+        dest="run_dependencies",
+        help="Run the Step alone without dependencies.",
+    )
+    run_parser.add_argument(
         "--path-mapping-rules",
-        action="store",
-        type=str,
         help="The path mapping rules to apply to the template. Should be a path mapping definition according to "
         + "the 'pathmapping-1.0' schema. Can either be supplied as a string or as a path to a JSON/YAML document, "
         + "prefixed with 'file://'.",
@@ -117,60 +127,54 @@ def add_run_arguments(run_parser: ArgumentParser):
         "--env",
         dest="environments",
         action="append",
-        type=str,
         metavar="<path-to-JSON/YAML-file> [<path-to-JSON/YAML-file>] ...",
         help="Apply the given environments to the Session in the order given.",
     )
     run_parser.add_argument(
         "--preserve",
-        action="store_const",
-        const=True,
+        action="store_true",
         default=False,
         help="Do not automatically delete the Session's Working Directory when complete.",
     )
     run_parser.add_argument(
         "--verbose",
-        action="store_const",
-        const=True,
+        action="store_true",
         default=False,
         help="Enable verbose logging while running the Session.",
     )
+    run_parser.add_argument(
+        "--timestamp-format",
+        choices=["relative", "local", "utc"],
+        default="relative",
+        help="How to format the log output timestamps when running the job.",
+    )
+    add_extensions_argument(run_parser)
 
 
-def _collect_required_steps(step_map: dict[str, Step], step: Step) -> list[Step]:
+def _collect_dependency_steps(step_map: dict[str, Step], step: Step) -> list[Step]:
     """
     Recursively traverses through a Step's dependencies to create an ordered list of
-    Steps to run in the local Session.
+    Steps to run in the local Session. Does not include the specified step.
     """
-    if step.stepEnvironments:
-        # Currently, we only support running one local Session, so any Steps with Step-specific environments
-        # must not depend on/be a dependency for other Steps.
-        raise RuntimeError(
-            f"ERROR: Step '{step.name}' has Step-level environments and cannot be run in the same local Session as the other dependencies."
-        )
-
     if not step.dependencies:
-        return [step]
+        return []
 
-    required_steps: list[Step] = []
+    dependency_steps: list[Step] = []
+    visited_step_names: set[str] = set()
 
-    try:
-        for dep in step.dependencies:
-            dependency_name = dep.dependsOn
-            # Collect transitive dependencies in the recursive call,
-            # then remove duplicates
-            collected = _collect_required_steps(step_map, step_map[dependency_name])
-            required_steps += [new_step for new_step in collected if new_step not in required_steps]
-    except KeyError:
-        # This should technically raise a validation error when creating a Job,
-        # but we check again here for thoroughness
-        raise RuntimeError(
-            f"ERROR: Dependency '{dependency_name}' in Step '{step.name}' is not an existing Step."
-        )
+    for dep in step.dependencies:
+        dependency_name = dep.dependsOn
+        if dependency_name not in visited_step_names:
+            visited_step_names.add(dependency_name)
+            # Collect transitive dependencies in the recursive call, then filter any that were previously visited
+            transitive_deps = _collect_dependency_steps(step_map, step_map[dependency_name])
+            dependency_steps.extend(
+                new_step for new_step in transitive_deps if new_step.name not in visited_step_names
+            )
+            dependency_steps.append(step_map[dependency_name])
+            visited_step_names.update(new_step.name for new_step in transitive_deps)
 
-    required_steps.append(step)
-
-    return required_steps
+    return dependency_steps
 
 
 def _process_task_params(arguments: list[str]) -> dict[str, str]:
@@ -271,22 +275,15 @@ def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None
     # For each task parameter set, verify:
     #  1) There are no parameters defined that don't exist in the template.
     #  2) That all parameters that are defined in the Step are defined in the parameter set.
-    #  3) [TODO] That the given parameter set is actually in the parameter space of the Step.
-    #       - We need openjd.model.StepParameterSpaceIterator to have a membership test first to be able to do
-    #         this last check.
+    #  3) That the given parameter set is actually in the parameter space of the Step.
 
     # Collect the names of all of the task parameters defined in the step.
-    if step.parameterSpace is not None:
-        param_space_iter = StepParameterSpaceIterator(space=step.parameterSpace)
-        task_parameter_names: set[str] = set(param_space_iter.names)
-    else:
-        task_parameter_names = set[str]()
+    param_space_iter = StepParameterSpaceIterator(space=step.parameterSpace)
+    task_parameter_names: set[str] = set(param_space_iter.names)
 
     error_list = list[str]()
     for i, parameter_set in enumerate(task_params):
         defined_params = set(parameter_set.keys())
-        if defined_params == task_parameter_names:
-            continue
         extra_names = defined_params.difference(task_parameter_names)
         missing_names = task_parameter_names.difference(defined_params)
         if extra_names:
@@ -297,6 +294,20 @@ def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None
             error_list.append(
                 f"Task {i} is missing values for parameters: {', '.join(sorted(missing_names))}"
             )
+        if not (extra_names or missing_names):
+            params = {
+                name: ParameterValue(
+                    type=ParameterValueType(
+                        step.parameterSpace.taskParameterDefinitions[name].type  # type: ignore
+                    ),
+                    value=parameter_set[name],
+                )
+                for name in task_parameter_names
+            }
+            try:
+                param_space_iter.validate_containment(params)
+            except ValueError as e:
+                error_list.append(f"Task {i}: {e}")
     if error_list:
         error_msg = "Errors defining task parameter values:\n - "
         error_msg += "\n - ".join(error_list)
@@ -306,13 +317,13 @@ def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None
 def _run_local_session(
     *,
     job: Job,
-    step_map: dict[str, Step],
-    step: Step,
+    step_list: list[Step],
+    selected_step: Optional[Step],
+    timestamp_format: LoggingTimestampFormat,
     maximum_tasks: int = -1,
-    task_parameter_values: list[dict] = [],
+    task_parameter_values: Iterable[TaskParameterSet],
     environments: Optional[list[EnvironmentTemplate]] = None,
     path_mapping_rules: Optional[list[PathMappingRule]],
-    should_run_dependencies: bool = False,
     should_print_logs: bool = True,
     retain_working_dir: bool = False,
 ) -> OpenJDCliResult:
@@ -320,56 +331,58 @@ def _run_local_session(
     Creates a Session object and listens for log messages to synchronously end the session.
     """
 
-    dependencies: list[Step] = []
     try:
-        if should_run_dependencies and step.dependencies:
-            # Raises: RuntimeError
-            dependencies = _collect_required_steps(step_map, step)[:-1]
-    except RuntimeError as rte:
-        return OpenJDCliResult(status="error", message=str(rte))
+        start_seconds = time.perf_counter()
 
-    with LocalSession(
-        job=job,
-        session_id="sample_session",
-        path_mapping_rules=path_mapping_rules,
-        environments=environments,
-        should_print_logs=should_print_logs,
-        retain_working_dir=retain_working_dir,
-    ) as session:
-        session.initialize(
-            dependencies=dependencies,
-            step=step,
-            task_parameter_values=task_parameter_values,
-            maximum_tasks=maximum_tasks,
-        )
-        session.run()
-
-        # Monitor the local Session state
-        session.ended.wait()
+        step_name = ""
+        with LocalSession(
+            job=job,
+            timestamp_format=timestamp_format,
+            session_id="CLI-session",
+            path_mapping_rules=path_mapping_rules,
+            environments=[env.environment for env in environments] if environments else [],
+            should_print_logs=should_print_logs,
+            retain_working_dir=retain_working_dir,
+        ) as session:
+            for dep_step in step_list:
+                step_name = dep_step.name
+                session.run_step(dep_step)
+            if selected_step:
+                step_name = selected_step.name
+                session.run_step(
+                    selected_step,
+                    task_parameters=task_parameter_values,
+                    maximum_tasks=maximum_tasks,
+                )
+        duration = time.perf_counter() - start_seconds
+    except LocalSessionFailed:
+        duration = time.perf_counter() - start_seconds
+        session = None
 
     preserved_message: str = ""
-    if retain_working_dir:
+    if retain_working_dir and session is not None:
         preserved_message = (
-            f"\nWorking directory preserved at: {str(session._inner_session.working_directory)}"
+            f"\nWorking directory preserved at: {str(session._openjd_session.working_directory)}"
         )
-    if session.failed:
+
+    if session is None or session.failed:
         return OpenJDRunResult(
             status="error",
             message="Session ended with errors; see Task logs for details" + preserved_message,
             job_name=job.name,
-            step_name=step.name,
-            duration=session.get_duration(),
-            tasks_run=session.tasks_run,
-            logs=session.get_log_messages(),
+            step_name=step_name,
+            duration=duration,
+            chunks_run=0 if session is None else session.task_run_count,
+            logs=[] if session is None else session.get_log_messages(),
         )
 
     return OpenJDRunResult(
         status="success",
         message="Session ended successfully" + preserved_message,
         job_name=job.name,
-        step_name=step.name,
-        duration=session.get_duration(),
-        tasks_run=session.tasks_run,
+        step_name=selected_step.name if selected_step else None,
+        duration=duration,
+        chunks_run=session.task_run_count,
         logs=session.get_log_messages(),
     )
 
@@ -384,6 +397,8 @@ def do_run(args: Namespace) -> OpenJDCliResult:
     a list of Task parameter sets; the Session will run the Step with each of the provided parameter
     sets in sequence.
     """
+
+    extensions = process_extensions_argument(args.extensions)
 
     environments: list[EnvironmentTemplate] = []
     if args.environments:
@@ -404,17 +419,22 @@ def do_run(args: Namespace) -> OpenJDCliResult:
                 parsed_rules = json.load(f)
         else:
             parsed_rules = json.loads(args.path_mapping_rules)
+        if not isinstance(parsed_rules, dict):
+            return OpenJDCliResult(
+                status="error",
+                message="Path mapping rules must be an object with 'version' and 'path_mapping_rules' fields",
+            )
         if parsed_rules.get("version", None) != "pathmapping-1.0":
             return OpenJDCliResult(
                 status="error",
                 message="Path mapping rules must have a 'version' value of 'pathmapping-1.0'",
             )
-        if not isinstance(parsed_rules.get("path_mapping_rules", None), list):
+        rules_list = parsed_rules.get("path_mapping_rules")
+        if not isinstance(rules_list, list):
             return OpenJDCliResult(
                 status="error",
                 message="Path mapping rules must contain a list named 'path_mapping_rules'",
             )
-        rules_list = parsed_rules.get("path_mapping_rules")
         path_mapping_rules = [PathMappingRule.from_dict(rule) for rule in rules_list]
 
     if args.verbose:
@@ -422,15 +442,29 @@ def do_run(args: Namespace) -> OpenJDCliResult:
 
     try:
         # Raises: RuntimeError
-        the_job = generate_job(args)
+        the_job = generate_job(args, supported_extensions=extensions)
 
         # Map Step names to Step objects so they can be easily accessed
         step_map = {step.name: step for step in the_job.steps}
 
-        if args.step not in step_map:
-            raise RuntimeError(
-                f"No Step with name '{args.step}' is defined in the given Job Template."
-            )
+        if args.step is not None:
+            # If a step name was provided
+            selected_step = step_map.get(args.step)
+            if selected_step is None:
+                raise RuntimeError(
+                    f"No Step with name '{args.step}' is defined in the given Job Template."
+                )
+        else:
+            if len(the_job.steps) == 1:
+                # If the job has only one step, act as if its name was provided
+                selected_step = the_job.steps[0]
+            else:
+                selected_step = None
+                if args.task_params or args.tasks:
+                    raise RuntimeError(
+                        "Providing task parameters requires a specified step or a job with a single step.\n"
+                        + f"{len(the_job.steps)} steps: {[step.name for step in the_job.steps]}."
+                    )
 
         task_params: list[dict[str, str]] = []
         if args.task_params:
@@ -438,20 +472,50 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         elif args.tasks:
             task_params = _process_tasks(args.tasks)
 
-        _validate_task_params(step_map[args.step], task_params)
+        if selected_step and task_params:
+            _validate_task_params(selected_step, task_params)
 
+            task_parameter_values: Iterable[TaskParameterSet] = [
+                {
+                    name: ParameterValue(
+                        type=ParameterValueType(
+                            selected_step.parameterSpace.taskParameterDefinitions[name].type  # type: ignore
+                        ),
+                        value=value,
+                    )
+                    for name, value in params.items()
+                }
+                for params in task_params
+            ]
+        elif selected_step:
+            task_parameter_values = StepParameterSpaceIterator(space=selected_step.parameterSpace)
+        else:
+            task_parameter_values = []
+
+    except RuntimeError as rte:
+        return OpenJDCliResult(status="error", message=str(rte))
+
+    step_list: list[Step] = []
+    try:
+        if selected_step is None:
+            # If no step was selected, topologically sort and run all the steps
+            step_graph = StepDependencyGraph(job=the_job)
+            step_list = step_graph.topo_sorted()
+        elif args.run_dependencies and selected_step.dependencies:
+            # Collect the dependencies of the selected step
+            step_list = _collect_dependency_steps(step_map, selected_step)
     except RuntimeError as rte:
         return OpenJDCliResult(status="error", message=str(rte))
 
     return _run_local_session(
         job=the_job,
-        step_map=step_map,
-        step=step_map[args.step],
-        task_parameter_values=task_params,
+        step_list=step_list,
+        selected_step=selected_step,
+        task_parameter_values=task_parameter_values,
+        timestamp_format=LoggingTimestampFormat(args.timestamp_format),
         maximum_tasks=args.maximum_tasks,
         environments=environments,
         path_mapping_rules=path_mapping_rules,
-        should_run_dependencies=(args.run_dependencies),
         should_print_logs=(args.output == "human-readable"),
         retain_working_dir=args.preserve,
     )

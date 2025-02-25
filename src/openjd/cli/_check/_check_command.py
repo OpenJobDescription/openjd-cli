@@ -1,6 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 from openjd.model import (
     DecodeValidationError,
     TemplateSpecificationVersion,
@@ -8,12 +8,24 @@ from openjd.model import (
     decode_environment_template,
 )
 
-from .._common import read_template, OpenJDCliResult, print_cli_result
+from .._common import (
+    add_extensions_argument,
+    read_template,
+    OpenJDCliResult,
+    print_cli_result,
+    process_extensions_argument,
+)
+
+
+def add_check_arguments(run_parser: ArgumentParser):
+    add_extensions_argument(run_parser)
 
 
 @print_cli_result
 def do_check(args: Namespace) -> OpenJDCliResult:
     """Open a provided template file and check its schema for errors."""
+
+    extensions = process_extensions_argument(args.extensions)
 
     try:
         # Raises: RuntimeError
@@ -27,7 +39,7 @@ def do_check(args: Namespace) -> OpenJDCliResult:
 
         # Raises: DecodeValidationError
         if TemplateSpecificationVersion.is_job_template(template_version):
-            decode_job_template(template=template_object, supported_extensions=["TASK_CHUNKING"])
+            decode_job_template(template=template_object, supported_extensions=extensions)
         elif TemplateSpecificationVersion.is_environment_template(template_version):
             decode_environment_template(template=template_object)
         else:

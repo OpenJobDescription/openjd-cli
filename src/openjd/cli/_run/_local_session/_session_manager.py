@@ -3,20 +3,27 @@
 from queue import Queue
 from threading import Event
 import time
-from typing import Optional, Type
+from typing import Any, Iterable, Optional, Type
 from types import FrameType, TracebackType
 from signal import signal, SIGINT, SIGTERM, SIG_DFL
+from itertools import islice
+from datetime import datetime, timedelta, timezone
 
-from ._actions import EnterEnvironmentAction, ExitEnvironmentAction, RunTaskAction, SessionAction
-from ._logs import LocalSessionLogHandler, LogEntry
+from ._actions import (
+    EnterEnvironmentAction,
+    ExitEnvironmentAction,
+    RunTaskAction,
+    SessionAction,
+    EnvironmentType,
+)
+from ._logs import LocalSessionLogHandler, LogEntry, LoggingTimestampFormat
 from openjd.model import (
-    EnvironmentTemplate,
+    IntRangeExpr,
     Job,
     JobParameterValues,
     ParameterValue,
     ParameterValueType,
     Step,
-    StepParameterSpace,
     StepParameterSpaceIterator,
     TaskParameterSet,
 )
@@ -30,28 +37,40 @@ from openjd.sessions import (
 )
 
 
+class LocalSessionFailed(RuntimeError):
+    """
+    Raised when an action in the session fails.
+    """
+
+    def __init__(self, failed_action: SessionAction):
+        self.failed_action = failed_action
+        super().__init__(f"Action failed: {failed_action}")
+
+
 class LocalSession:
     """
-    A wrapper for the `Session` object in the `sessions` module
-    that holds information about a locally-running Session launched
-    from the CLI.
+    A class to manage a `Session` object from the `sessions` module,
+    to run tasks of a job in a locally-running Session launched from the CLI.
+
+    An OpenJD session's purpose is to run tasks from a single job. It can run
+    tasks from different steps, as long as it enters the step environments
+    before and exits them after.
     """
 
     session_id: str
     failed: bool = False
-    ended: Event
-    tasks_run: int = 0
+    task_run_count: int = 0
     _job: Job
     _maximum_tasks: int
-    _start_seconds: float
-    _end_seconds: float
-    _inner_session: Session
+    _openjd_session: Session
     _enter_env_queue: Queue[EnterEnvironmentAction]
     _action_queue: Queue[RunTaskAction]
     _current_action: Optional[SessionAction]
+    _failed_action: Optional[SessionAction]
     _action_ended: Event
     _path_mapping_rules: Optional[list[PathMappingRule]]
-    _environments: Optional[list[EnvironmentTemplate]]
+    _environments: Optional[list[Any]]
+    _environments_entered: list[tuple[EnvironmentType, str]]
     _log_handler: LocalSessionLogHandler
     _cleanup_called: bool
 
@@ -60,19 +79,20 @@ class LocalSession:
         *,
         job: Job,
         session_id: str,
+        timestamp_format: LoggingTimestampFormat = LoggingTimestampFormat.RELATIVE,
         path_mapping_rules: Optional[list[PathMappingRule]] = None,
-        environments: Optional[list[EnvironmentTemplate]] = None,
+        environments: Optional[list[Any]] = None,
         should_print_logs: bool = True,
         retain_working_dir: bool = False,
     ):
         self.session_id = session_id
-        self.ended = Event()
         self._action_ended = Event()
         self._job = job
+        self._timestamp_format = timestamp_format
         self._path_mapping_rules = path_mapping_rules
         self._environments = environments
 
-        # Create an inner Session
+        # Create an OpenJD Session
         job_parameters: JobParameterValues
         if job.parameters:
             job_parameters = {
@@ -82,7 +102,7 @@ class LocalSession:
         else:
             job_parameters = dict[str, ParameterValue]()
 
-        self._inner_session = Session(
+        self._openjd_session = Session(
             session_id=self.session_id,
             job_parameter_values=job_parameters,
             path_mapping_rules=self._path_mapping_rules,
@@ -90,20 +110,71 @@ class LocalSession:
             retain_working_dir=retain_working_dir,
         )
 
+        self._should_print_logs = should_print_logs
+        self._cleanup_called = False
+        self._started = False
+
+        self._current_action = None
+        self._failed_action = None
+        self._environments_entered = []
+
         # Initialize the action queue
         self._enter_env_queue: Queue[EnterEnvironmentAction] = Queue()
         self._action_queue: Queue[RunTaskAction] = Queue()
-        self._current_action = None
 
-        self._should_print_logs = should_print_logs
-        self._cleanup_called = False
+    def _context_manager_cleanup(self):
+        try:
+            # Exit all the environments that were entered
+            self.run_environment_exits(type=EnvironmentType.ALL, keep_session_running=False)
+        finally:
+            signal(SIGINT, SIG_DFL)
+            signal(SIGTERM, SIG_DFL)
+            self._started = False
+
+            if self.failed:
+                LOG.info(
+                    msg=f"Open Job Description CLI: ERROR executing action: '{self.failed_action}' (see Task logs for details)",
+                    extra={"session_id": self.session_id},
+                )
+            else:
+                LOG.info(
+                    msg="Open Job Description CLI: All actions completed successfully!",
+                    extra={"session_id": self.session_id},
+                )
+            self.cleanup()
+            self._started = False
 
     def __enter__(self) -> "LocalSession":
         # Add log handling
-        self._log_handler = LocalSessionLogHandler(should_print=self._should_print_logs)
+        session_start_timestamp = datetime.now(timezone.utc)
+        self._log_handler = LocalSessionLogHandler(
+            should_print=self._should_print_logs,
+            session_start_timestamp=session_start_timestamp,
+            timestamp_format=self._timestamp_format,
+        )
         LOG.addHandler(self._log_handler)
+        LOG.info(
+            msg=f"Open Job Description CLI: Session start {session_start_timestamp.astimezone().isoformat()}",
+            extra={"session_id": self.session_id},
+        )
+        LOG.info(
+            msg=f"Open Job Description CLI: Running job '{self._job.name}'",
+            extra={"session_id": self.session_id},
+        )
         signal(SIGINT, self._sigint_handler)
         signal(SIGTERM, self._sigint_handler)
+
+        self._started = True
+
+        # Enter all the external and job environments
+        try:
+            self.run_environment_enters(self._environments, EnvironmentType.EXTERNAL)
+            self.run_environment_enters(self._job.jobEnvironments, EnvironmentType.JOB)
+        except LocalSessionFailed:
+            # If __enter__ fails, __exit__ won't be called so need to clean up here
+            self._context_manager_cleanup()
+            raise
+
         return self
 
     def __exit__(
@@ -112,14 +183,189 @@ class LocalSession:
         exc_value: Optional[BaseException],
         traceback: Optional[TracebackType],
     ) -> None:
-        signal(SIGINT, SIG_DFL)
-        signal(SIGTERM, SIG_DFL)
-        self.cleanup()
+        # __enter__ should have been called before __exit__
+        if not self._started:
+            raise RuntimeError("Session was not started via a with statement.")
+
+        self._context_manager_cleanup()
 
     def _sigint_handler(self, signum: int, frame: Optional[FrameType]) -> None:
         """Signal handler that is invoked when the process receives a SIGINT/SIGTERM"""
         LOG.info("Interruption signal recieved.")
         self.cancel()
+
+    def run_environment_enters(self, environments: Optional[list[Any]], type: EnvironmentType):
+        """Enter one or more environments in the session."""
+        if environments is None:
+            return
+
+        if self._openjd_session.state != SessionState.READY:
+            raise RuntimeError(
+                f"Session must be in READY state, but is in {self._openjd_session.state.name}"
+            )
+
+        for env in environments:
+            env_id = f"{type.name} - {env.name}"
+            self._action_ended.clear()
+            self._current_action = EnterEnvironmentAction(
+                session=self._openjd_session, environment=env, env_id=env_id
+            )
+            self._environments_entered.append((type, env_id))
+            self._current_action.run()
+            self._action_ended.wait()
+            if self.failed:
+                self._failed_action = self._current_action
+                self._current_action = None
+                raise LocalSessionFailed(self._failed_action)
+        self._current_action = None
+
+    def run_environment_exits(self, type: EnvironmentType, *, keep_session_running: bool):
+        """Exit environments that were entered in this session, in reverse order.
+        Only exits environments matching the provided environment type.
+        """
+        if self._openjd_session.state not in (SessionState.READY, SessionState.READY_ENDING):
+            raise RuntimeError(
+                f"Session must be in READY or READY_ENDING state, but is in {self._openjd_session.state.name}"
+            )
+
+        failed_action = None
+
+        while self._environments_entered and self._environments_entered[-1][0].matches(type):
+            env_id = self._environments_entered.pop()[1]
+            prev_action_failed = self.failed
+            self._action_ended.clear()
+            self._current_action = ExitEnvironmentAction(
+                session=self._openjd_session, id=env_id, keep_session_running=keep_session_running
+            )
+            self._current_action.run()
+            self._action_ended.wait()
+            if self.failed and not prev_action_failed:
+                failed_action = self._failed_action = self._current_action
+        self._current_action = None
+
+        if failed_action:
+            raise LocalSessionFailed(failed_action)
+
+    def run_task(self, step: Step, parameter_set: TaskParameterSet) -> None:
+        """Run a single task of a step in the session."""
+        if self._openjd_session.state != SessionState.READY:
+            raise RuntimeError(
+                f"Session must be in READY state, but is in {self._openjd_session.state.name}"
+            )
+
+        self._action_ended.clear()
+        self._current_action = RunTaskAction(
+            session=self._openjd_session, step=step, parameters=parameter_set
+        )
+        self._current_action.run()
+        self._action_ended.wait()
+        if self.failed:
+            self._failed_action = self._current_action
+            self._current_action = None
+            raise LocalSessionFailed(self._failed_action)
+        self._current_action = None
+
+    def _run_tasks_adaptive_chunking(
+        self, step: Step, task_parameters: StepParameterSpaceIterator, maximum_tasks: Optional[int]
+    ):
+        """Runs all the tasks of the task_parameters iterator with adaptive chunking."""
+        completed_task_count = 0
+        completed_task_duration = 0.0
+        target_runtime_seconds = int(
+            step.parameterSpace.taskParameterDefinitions[  # type: ignore
+                task_parameters.chunks_parameter_name  # type: ignore
+            ].chunks.targetRuntimeSeconds
+        )  # type: ignore
+
+        while True:
+            # Get the next chunk to run
+            parameter_set = next(task_parameters, None)
+            if parameter_set is None:
+                break
+
+            start_seconds = time.perf_counter()
+            # This may raise a LocalSessionFailed exception
+            self.run_task(step, parameter_set)
+            duration = time.perf_counter() - start_seconds
+
+            # Accumulate the task count and duration from running this chunk
+            completed_task_count += len(
+                IntRangeExpr.from_str(parameter_set[task_parameters.chunks_parameter_name].value)  # type: ignore
+            )
+            completed_task_duration += duration
+
+            # Estimate a chunk size based on the statistics, and update the iterator. Note that this
+            # logic is very simple, providing a good starting point that behaves reasonably for other implementations
+            # to follow.
+            duration_per_task = completed_task_duration / completed_task_count
+            adaptive_chunk_size = target_runtime_seconds / duration_per_task
+            if (
+                completed_task_count < 10
+                and adaptive_chunk_size > task_parameters.chunks_default_task_count  # type: ignore
+            ):
+                # When we have data about only a few tasks, gradually blend in the new estimate instead of cutting over immediately
+                adaptive_chunk_size = (
+                    0.75 * task_parameters.chunks_default_task_count + 0.25 * adaptive_chunk_size  # type: ignore
+                )
+            adaptive_chunk_size = max(int(adaptive_chunk_size), 1)
+            if adaptive_chunk_size != task_parameters.chunks_default_task_count:
+                LOG.info(
+                    msg=f"Open Job Description CLI: Ran {completed_task_count} tasks in {timedelta(seconds=completed_task_duration)}, average {timedelta(seconds=completed_task_duration / completed_task_count)}",
+                    extra={"session_id": self.session_id},
+                )
+                LOG.info(
+                    msg=f"Open Job Description CLI: Adjusting chunk size from {task_parameters.chunks_default_task_count} to {adaptive_chunk_size}",
+                    extra={"session_id": self.session_id},
+                )
+                task_parameters.chunks_default_task_count = adaptive_chunk_size
+
+            # If a maximum task count was specified, count them down
+            if maximum_tasks and maximum_tasks > 0:
+                maximum_tasks -= 1
+                if maximum_tasks == 0:
+                    break
+
+    def run_step(
+        self,
+        step: Step,
+        task_parameters: Optional[Iterable[TaskParameterSet]] = None,
+        maximum_tasks: Optional[int] = None,
+    ) -> None:
+        """Run a step in the session. Optional parameters control which tasks to run."""
+        if self._openjd_session.state != SessionState.READY:
+            raise RuntimeError(
+                f"Session must be in READY state, but is in {self._openjd_session.state.name}"
+            )
+
+        LOG.info(
+            msg=f"Open Job Description CLI: Running step '{step.name}'",
+            extra={"session_id": self.session_id},
+        )
+
+        if task_parameters is None:
+            task_parameters = StepParameterSpaceIterator(space=step.parameterSpace)
+
+        # Enter all the step environments
+        self.run_environment_enters(step.stepEnvironments, EnvironmentType.STEP)
+
+        try:
+            # Run the tasks
+            if (
+                isinstance(task_parameters, StepParameterSpaceIterator)
+                and task_parameters.chunks_adaptive
+            ):
+                self._run_tasks_adaptive_chunking(step, task_parameters, maximum_tasks)
+            else:
+                # Run without adaptive chunking
+                if maximum_tasks and maximum_tasks > 0:
+                    task_parameters = islice(task_parameters, maximum_tasks)
+
+                for parameter_set in task_parameters:
+                    # This may raise a LocalSessionFailed exception
+                    self.run_task(step, parameter_set)
+        finally:
+            # Exit all the step environments
+            self.run_environment_exits(type=EnvironmentType.STEP, keep_session_running=True)
 
     def cleanup(self) -> None:
         if not self._cleanup_called:
@@ -130,161 +376,13 @@ class LocalSession:
             self._log_handler.close()
             LOG.removeHandler(self._log_handler)
 
-            self._inner_session.cleanup()
+            self._openjd_session.cleanup()
             self._cleanup_called = True
 
-    def initialize(
-        self,
-        *,
-        dependencies: list[Step],
-        step: Step,
-        maximum_tasks: int = -1,
-        task_parameter_values: Optional[list[dict]] = None,
-    ) -> None:
-        """
-        Queues up necessary actions for the Step.
-
-        Args:
-            job: The Job this Step belongs to.
-            step: The Step object to run.
-            task_parameters: A list of Task parameter sets to run this Step with.
-            If not specified, defaults to the first Task parameter set defined in the Step's
-            parameter space.
-        """
-
-        self.ended.clear()
-
-        session_environment_ids: list[str] = []
-        # Enqueue "Enter Environment" actions for the given environments
-        if self._environments:
-            envs = [environ.environment for environ in self._environments]
-            session_environment_ids += self._add_environments(envs)
-
-        # Enqueue "Enter Environment" actions for root level environments
-        if self._job.jobEnvironments:
-            session_environment_ids += self._add_environments(self._job.jobEnvironments)
-
-        # Step-level environments can only be defined if there is a single Step,
-        # or else we can't run the required Steps in a single Session
-        if not dependencies and step.stepEnvironments:
-            session_environment_ids += self._add_environments(step.stepEnvironments)
-
-        # Next, per dependency, enqueue "Run Task" actions for each set of Task parameters
-        # If the Step takes no parameters, we only need to enqueue a single Step with an empty parameter list
-        for dep in dependencies:
-            if not dep.parameterSpace:
-                self._action_queue.put(
-                    RunTaskAction(
-                        session=self._inner_session,
-                        step=dep,
-                        parameters=dict[str, ParameterValue](),
-                    )
-                )
-            else:
-                for parameter_set in StepParameterSpaceIterator(space=dep.parameterSpace):
-                    self._action_queue.put(
-                        RunTaskAction(
-                            session=self._inner_session, step=dep, parameters=parameter_set
-                        )
-                    )
-
-        # The Step specified by the user is the only one that needs to use custom Task parameters, if given
-        if not step.parameterSpace:
-            self._action_queue.put(RunTaskAction(self._inner_session, step=step, parameters=dict()))
-
-        else:
-            if not task_parameter_values:
-                parameter_sets: list[TaskParameterSet] = list(
-                    StepParameterSpaceIterator(space=step.parameterSpace)
-                )
-            else:
-                try:
-                    parameter_sets = [
-                        self._generate_task_parameter_set(
-                            parameter_space=step.parameterSpace, parameter_values=values
-                        )
-                        for values in task_parameter_values
-                    ]
-
-                except RuntimeError as rte:
-                    LOG.info(
-                        f"Open Job Description CLI: Skipping Task parameter set with errors:\n{str(rte)}"
-                    )
-
-                    # Set the `failed` flag to indicate that there were problems,
-                    # but continue running the Session in case there are parameter sets that still work
-                    self.failed = True
-
-            # Task maximum is only imposed if the user provides a positive value
-            if maximum_tasks > 0:
-                parameter_sets = parameter_sets[: min(maximum_tasks, len(parameter_sets))]
-
-            for param_set in parameter_sets:
-                self._action_queue.put(
-                    RunTaskAction(self._inner_session, step=step, parameters=param_set)
-                )
-
-    def run(self) -> None:
-        if self._inner_session.state != SessionState.READY:
-            raise RuntimeError("Session is not in a READY state")
-
-        environments_entered = list[str]()
-        failed_action: Optional[SessionAction] = None
-
-        self._start_seconds = time.perf_counter()
-
-        # Enter all of the Environments, and keep track of which ones we've entered
-        while not self._enter_env_queue.empty() and not self.failed:
-            self._action_ended.clear()
-            action = self._enter_env_queue.get()
-            environments_entered.append(action._id)
-            self._current_action = action
-            self._current_action.run()
-            self._action_ended.wait()
-            if self.failed:
-                failed_action = self._current_action
-
-        # Run all of the Tasks that are enqueued
-        while not self._action_queue.empty() and not self.failed:
-            self._action_ended.clear()
-            self._current_action = self._action_queue.get()
-            self._current_action.run()
-            self._action_ended.wait()
-            if self.failed:
-                failed_action = self._current_action
-
-        # Exit all environments that were entered. We always try to exit all failed environments; even
-        # if an environment-enter, task, or environment exit failed.
-        while environments_entered:
-            prev_action_failed = self.failed
-            self._action_ended.clear()
-            self._current_action = ExitEnvironmentAction(
-                self._inner_session, environments_entered.pop()
-            )
-            self._current_action.run()
-            self._action_ended.wait()
-            if self.failed and not prev_action_failed:
-                failed_action = self._current_action
-
-        if self.failed:
-            # Action encountered an error; clean up resources and end session
-            LOG.info(
-                msg=f"Open Job Description CLI: ERROR executing action: '{str(failed_action)}' (see Task logs for details)",
-                extra={"session_id": self.session_id},
-            )
-
-        else:
-            # In this case, we've finished all the Tasks and exited all the environments,
-            # so we can clean up and end
-            # else:
-            LOG.info(
-                msg="Open Job Description CLI: All actions completed successfully!",
-                extra={"session_id": self.session_id},
-            )
-            self._current_action = None
-
-        self._end_seconds = time.perf_counter()
-        self.ended.set()
+    @property
+    def failed_action(self) -> Optional[SessionAction]:
+        """The action that failed, if any."""
+        return self._failed_action
 
     def cancel(self):
         LOG.info(
@@ -292,10 +390,10 @@ class LocalSession:
             extra={"session_id": self.session_id},
         )
 
-        if self._inner_session.state == SessionState.RUNNING:
+        if self._openjd_session.state == SessionState.RUNNING:
             # The action will call self._action_callback when it has exited,
             # and that will exit the loop in self.run()
-            self._inner_session.cancel_action()
+            self._openjd_session.cancel_action()
 
         LOG.info(
             msg=f"Open Job Description CLI: Session terminated by user while running action: '{str(self._current_action)}'.",
@@ -303,86 +401,14 @@ class LocalSession:
         )
         self.failed = True
 
-    def get_duration(self) -> float:
-        if not self._start_seconds:
-            return 0
-        elif not self._end_seconds:
-            return time.perf_counter() - self._start_seconds
-        return self._end_seconds - self._start_seconds
-
     def get_log_messages(self) -> list[LogEntry]:
         return self._log_handler.messages
-
-    def _generate_task_parameter_set(
-        self, *, parameter_space: StepParameterSpace, parameter_values: dict
-    ) -> TaskParameterSet:
-        """
-        Convert dictionary-formatted Task parameters into a TaskParameterSet that can
-        be used in a Session.
-        If any parameters are missing from the dictionary, we will default to using
-        the first value for that parameter defined in the Step's parameter space.
-        """
-
-        # For each parameter defined in the Step, assert that it appears
-        # with the correct type in each parameter set provided by the user.
-        # We compound each error into a log message so that the user
-        # can fix as many as possible at once.
-
-        defined_names = set(parameter_space.taskParameterDefinitions.keys())
-        provided_names = set(parameter_values.keys())
-
-        # First, check for extraneous parameters
-        extra_names = provided_names.difference(defined_names)
-        for name in extra_names:
-            LOG.info(
-                msg=f"Skipping unused parameter '{name}'", extra={"session_id": self.session_id}
-            )
-
-        # The first value in the parameter space iterator will hold the default value
-        # we use for each missing parameter
-        default_set = StepParameterSpaceIterator(space=parameter_space)[0]
-
-        parameter_set = TaskParameterSet()
-        for name in defined_names:
-            # Note that parameter sets don't verify types, so any errors resulting from
-            # type mismatches will be raised when the inner Session attempts to use them.
-            if name in parameter_values:
-                parameter_set.update(
-                    {
-                        name: ParameterValue(
-                            type=ParameterValueType(
-                                parameter_space.taskParameterDefinitions[name].type
-                            ),
-                            value=f"{parameter_values[name]}",
-                        )
-                    }
-                )
-            else:
-                parameter_set.update(
-                    {
-                        name: ParameterValue(
-                            type=ParameterValueType(
-                                parameter_space.taskParameterDefinitions[name].type
-                            ),
-                            value=default_set[name].value,
-                        )
-                    }
-                )
-
-        return parameter_set
 
     def _action_callback(self, session_id: str, new_status: ActionStatus) -> None:
         if new_status.state == ActionState.SUCCESS:
             if isinstance(self._current_action, RunTaskAction):
-                self.tasks_run += 1
+                self.task_run_count += 1
             self._action_ended.set()
         if new_status.state in (ActionState.FAILED, ActionState.CANCELED, ActionState.TIMEOUT):
             self.failed = True
             self._action_ended.set()
-
-    def _add_environments(self, envs: list) -> list[str]:
-        ids: list[str] = []
-        for env in envs:
-            self._enter_env_queue.put(EnterEnvironmentAction(self._inner_session, env, env.name))
-            ids.append(env.name)
-        return ids

@@ -6,533 +6,239 @@ from pathlib import Path, PureWindowsPath, PurePosixPath
 import tempfile
 import re
 import os
-from typing import Any, Optional
+from typing import Optional
 import logging
+import shlex
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
-from . import MOCK_TEMPLATE, SampleSteps
+from . import MOCK_TEMPLATE, SampleSteps, run_openjd_cli_main, format_capsys_outerr
+
 from openjd.cli._run._run_command import (
-    OpenJDRunResult,
     do_run,
-    _run_local_session,
     _process_task_params,
     _process_tasks,
-    _validate_task_params,
 )
-from openjd.cli._run._local_session._session_manager import LocalSession
-from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat, Session
-from openjd.model import decode_job_template, create_job, ParameterValue, ParameterValueType
+from openjd.cli._run._local_session._session_manager import LoggingTimestampFormat
+from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat
 
 
-TEST_RUN_JOB_TEMPLATE_BASIC = {
-    "specificationVersion": "jobtemplate-2023-09",
-    "name": "Job",
-    "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-    "jobEnvironments": [
-        {
-            "name": "J1",
-            "script": {
-                "actions": {
-                    "onEnter": {"command": "python", "args": ["-c", "print('J1 Enter')"]},
-                    "onExit": {"command": "python", "args": ["-c", "print('J1 Exit')"]},
-                }
-            },
-        },
-        {
-            "name": "J2",
-            "script": {
-                "actions": {
-                    "onEnter": {"command": "python", "args": ["-c", "print('J2 Enter')"]},
-                    "onExit": {"command": "python", "args": ["-c", "print('J2 Exit')"]},
-                }
-            },
-        },
-    ],
-    "steps": [
-        {
-            "name": "First",
-            "parameterSpace": {
-                "taskParameterDefinitions": [
-                    {"name": "Foo", "type": "INT", "range": "1"},
-                    {"name": "Bar", "type": "STRING", "range": ["Bar1", "Bar2"]},
-                ]
-            },
-            "stepEnvironments": [
-                {
-                    "name": "FirstS",
-                    "script": {
-                        "actions": {
-                            "onEnter": {
-                                "command": "python",
-                                "args": ["-c", "print('FirstS Enter')"],
-                            },
-                            "onExit": {"command": "python", "args": ["-c", "print('FirstS Exit')"]},
-                        }
-                    },
-                },
-            ],
-            "script": {
-                "actions": {
-                    "onRun": {
-                        "command": "python",
-                        "args": [
-                            "-c",
-                            "print('J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}')",
-                        ],
-                    }
-                }
-            },
-        }
-    ],
-}
-
-TEST_RUN_JOB_TEMPLATE_DEPENDENCY = {
-    "specificationVersion": "jobtemplate-2023-09",
-    "name": "Job",
-    "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-    "jobEnvironments": [
-        {
-            "name": "J1",
-            "script": {
-                "actions": {
-                    "onEnter": {"command": "python", "args": ["-c", "print('J1 Enter')"]},
-                    "onExit": {"command": "python", "args": ["-c", "print('J1 Exit')"]},
-                }
-            },
-        },
-    ],
-    "steps": [
-        {
-            "name": "First",
-            "parameterSpace": {
-                "taskParameterDefinitions": [
-                    {"name": "Foo", "type": "INT", "range": "1"},
-                    {"name": "Bar", "type": "STRING", "range": ["Bar1", "Bar2"]},
-                ]
-            },
-            "script": {
-                "actions": {
-                    "onRun": {
-                        "command": "python",
-                        "args": [
-                            "-c",
-                            "print('J={{Param.J}} Foo={{Task.Param.Foo}}. Bar={{Task.Param.Bar}}')",
-                        ],
-                    }
-                }
-            },
-        },
-        {
-            "name": "Second",
-            "dependencies": [{"dependsOn": "First"}],
-            "parameterSpace": {
-                "taskParameterDefinitions": [
-                    {"name": "Fuz", "type": "INT", "range": "1-2"},
-                ]
-            },
-            "script": {
-                "actions": {
-                    "onRun": {
-                        "command": "python",
-                        "args": [
-                            "-c",
-                            "print('J={{Param.J}} Fuz={{Task.Param.Fuz}}.')",
-                        ],
-                    }
-                }
-            },
-        },
-    ],
-}
-
-TEST_RUN_ENV_TEMPLATE_1 = {
-    "specificationVersion": "environment-2023-09",
-    "environment": {
-        "name": "Env1",
-        "script": {
-            "actions": {
-                "onEnter": {"command": "python", "args": ["-c", "print('Env1 Enter')"]},
-                "onExit": {"command": "python", "args": ["-c", "print('Env1 Exit')"]},
-            }
-        },
-    },
-}
-
-TEST_RUN_ENV_TEMPLATE_2 = {
-    "specificationVersion": "environment-2023-09",
-    "environment": {
-        "name": "Env2",
-        "script": {
-            "actions": {
-                "onEnter": {"command": "python", "args": ["-c", "print('Env2 Enter')"]},
-                "onExit": {"command": "python", "args": ["-c", "print('Env2 Exit')"]},
-            }
-        },
-    },
-}
-
-TEST_RUN_ENV_TEMPLATE_FAILS_ENTER = {
-    "specificationVersion": "environment-2023-09",
-    "environment": {
-        "name": "EnvEnterFail",
-        "script": {
-            "actions": {
-                "onEnter": {
-                    "command": "python",
-                    "args": ["-c", "import sys; print('EnvEnterFail Enter'); sys.exit(1)"],
-                },
-                "onExit": {"command": "python", "args": ["-c", "print('EnvEnterFail Exit')"]},
-            }
-        },
-    },
-}
-
-TEST_RUN_ENV_TEMPLATE_FAILS_EXIT = {
-    "specificationVersion": "environment-2023-09",
-    "environment": {
-        "name": "EnvExitFail",
-        "script": {
-            "actions": {
-                "onEnter": {"command": "python", "args": ["-c", "print('EnvExitFail Enter')"]},
-                "onExit": {
-                    "command": "python",
-                    "args": ["-c", "import sys; print('EnvExitFail Exit'); sys.exit(1)"],
-                },
-            }
-        },
-    },
-}
+PARAMETRIZE_CASES: tuple = (
+    pytest.param(
+        "basic.yaml",
+        [],  # Env Templates
+        "First",  # step name
+        [],  # Task params
+        True,  # run_dependencies
+        re.compile(
+            r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit"
+        ),
+        "",
+        0,
+        id="RunFirstStep",
+    ),
+    pytest.param(
+        "basic.yaml",
+        [],  # Env Templates
+        "First",  # step name
+        ["-tp", "Foo=1", "-tp", "Bar=Bar1"],  # Task params
+        True,  # run_dependencies
+        re.compile(
+            r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*FirstS Exit.*J2 Exit.*J1 Exit"
+        ),
+        "Foo=1. Bar=Bar2",
+        0,
+        id="RunSelectTask",
+    ),
+    pytest.param(
+        "basic_dependency_job.yaml",
+        [],  # Env Templates
+        "Second",  # step name
+        [],  # Task params
+        True,  # run_dependencies
+        re.compile(
+            r"J1 Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"
+        ),
+        "",
+        0,
+        id="RunSecondStepWithDep",
+    ),
+    pytest.param(
+        "basic_dependency_job.yaml",
+        [],  # Env Templates
+        "Second",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        re.compile(r"J1 Enter.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"),
+        "Foo=1. Bar=Bar1",
+        0,
+        id="RunSecondStepNoDep",
+    ),
+    pytest.param(
+        "basic.yaml",
+        ["env_1.yaml"],  # Env Templates
+        "First",  # step name
+        [],  # Task params
+        True,  # run_dependencies
+        re.compile(
+            r"Env1 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env1 Exit"
+        ),
+        "",
+        0,
+        id="WithOneEnv",
+    ),
+    pytest.param(
+        "basic.yaml",
+        ["env_1.yaml", "env_2.yaml"],  # Env Templates
+        "First",  # step name
+        [],  # Task params
+        True,  # run_dependencies
+        re.compile(
+            r"Env1 Enter.*Env2 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env2 Exit.*Env1 Exit"
+        ),
+        "",
+        0,
+        id="WithTwoEnvs",
+    ),
+    pytest.param(
+        "simple_with_j_param.yaml",
+        ["env_fails_enter.yaml"],  # Env Templates
+        "SimpleStep",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        re.compile(r"EnvEnterFail Enter.*EnvEnterFail Exit"),
+        # We should not run the task
+        "DoTask",
+        1,
+        id="EnterEnvFails",
+    ),
+    pytest.param(
+        "simple_with_j_param.yaml",
+        ["env_fails_enter.yaml", "env_1.yaml"],  # Env Templates
+        "SimpleStep",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        re.compile(r"EnvEnterFail Enter.*EnvEnterFail Exit"),
+        # We should not run the second environment
+        "Env1 Enter",
+        1,
+        id="EnterEnvFails_2",
+    ),
+    pytest.param(
+        "simple_with_j_param_exit_1.yaml",
+        ["env_1.yaml"],  # Env Templates
+        "SimpleStep",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        # Task fails; we should still run everything
+        re.compile(r"Env1 Enter.*DoTask.*Env1 Exit"),
+        "",
+        1,
+        id="TaskFails",
+    ),
+    pytest.param(
+        "simple_with_j_param.yaml",
+        ["env_fails_exit.yaml"],  # Env Templates
+        "SimpleStep",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        re.compile(
+            # environment exit fails; we still run everything
+            r"EnvExitFail Enter.*DoTask.*EnvExitFail Exit"
+        ),
+        "",
+        1,
+        id="EnvExitFails",
+    ),
+    pytest.param(
+        "simple_with_j_param.yaml",
+        ["env_1.yaml", "env_fails_exit.yaml"],  # Env Templates
+        "SimpleStep",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        re.compile(
+            # environment exit fails; we still run everything
+            r"Env1 Enter.*EnvExitFail Enter.*DoTask.*EnvExitFail Exit.*Env1 Exit"
+        ),
+        "",
+        1,
+        id="EnvExitFails_2",
+    ),
+    pytest.param(
+        "job_sleep_exit_normal.yaml",
+        [],  # Env Templates
+        "Timeout",  # step name
+        [],  # Task params
+        False,  # run_dependencies
+        re.compile(r"SLEEP"),
+        "EXIT_NORMAL",
+        1,
+        id="TaskTimeout",
+    ),
+)
 
 
 @pytest.mark.parametrize(
-    "job_template,env_templates,step_name,task_params,run_dependencies,expected_output,expected_not_in_output,expect_system_exit",
-    [
-        pytest.param(
-            TEST_RUN_JOB_TEMPLATE_BASIC,
-            [],  # Env Templates
-            "First",  # step name
-            [],  # Task params
-            True,  # run_dependencies
-            re.compile(
-                r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit"
-            ),
-            "",
-            False,
-            id="RunFirstStep",
-        ),
-        pytest.param(
-            TEST_RUN_JOB_TEMPLATE_BASIC,
-            [],  # Env Templates
-            "First",  # step name
-            ["Foo=1", "Bar=Bar1"],  # Task params
-            True,  # run_dependencies
-            re.compile(
-                r"J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*FirstS Exit.*J2 Exit.*J1 Exit"
-            ),
-            "Foo=1. Bar=Bar2",
-            False,
-            id="RunSelectTask",
-        ),
-        pytest.param(
-            TEST_RUN_JOB_TEMPLATE_DEPENDENCY,
-            [],  # Env Templates
-            "Second",  # step name
-            [],  # Task params
-            True,  # run_dependencies
-            re.compile(
-                r"J1 Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"
-            ),
-            "",
-            False,
-            id="RunSecondStepWithDep",
-        ),
-        pytest.param(
-            TEST_RUN_JOB_TEMPLATE_DEPENDENCY,
-            [],  # Env Templates
-            "Second",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            re.compile(r"J1 Enter.*J=Jvalue Fuz=1.*J=Jvalue Fuz=2.*J1 Exit"),
-            "Foo=1. Bar=Bar1",
-            False,
-            id="RunSecondStepNoDep",
-        ),
-        pytest.param(
-            TEST_RUN_JOB_TEMPLATE_BASIC,
-            [TEST_RUN_ENV_TEMPLATE_1],  # Env Templates
-            "First",  # step name
-            [],  # Task params
-            True,  # run_dependencies
-            re.compile(
-                r"Env1 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env1 Exit"
-            ),
-            "",
-            False,
-            id="WithOneEnv",
-        ),
-        pytest.param(
-            TEST_RUN_JOB_TEMPLATE_BASIC,
-            [TEST_RUN_ENV_TEMPLATE_1, TEST_RUN_ENV_TEMPLATE_2],  # Env Templates
-            "First",  # step name
-            [],  # Task params
-            True,  # run_dependencies
-            re.compile(
-                r"Env1 Enter.*Env2 Enter.*J1 Enter.*J2 Enter.*FirstS Enter.*J=Jvalue.*Foo=1. Bar=Bar1.*Foo=1. Bar=Bar2.*FirstS Exit.*J2 Exit.*J1 Exit.*Env2 Exit.*Env1 Exit"
-            ),
-            "",
-            False,
-            id="WithTwoEnvs",
-        ),
-        pytest.param(
-            {
-                "specificationVersion": "jobtemplate-2023-09",
-                "name": "Test",
-                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-                "steps": [
-                    {
-                        "name": "SimpleStep",
-                        "script": {
-                            "actions": {
-                                "onRun": {
-                                    "command": "python",
-                                    "args": ["-c", "print('DoTask')"],
-                                }
-                            }
-                        },
-                    }
-                ],
-            },
-            [TEST_RUN_ENV_TEMPLATE_FAILS_ENTER],  # Env Templates
-            "SimpleStep",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            re.compile(r"EnvEnterFail Enter.*EnvEnterFail Exit"),
-            # We should not run the task
-            "DoTask",
-            True,
-            id="EnterEnvFails",
-        ),
-        pytest.param(
-            {
-                "specificationVersion": "jobtemplate-2023-09",
-                "name": "Test",
-                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-                "steps": [
-                    {
-                        "name": "SimpleStep",
-                        "script": {
-                            "actions": {
-                                "onRun": {
-                                    "command": "python",
-                                    "args": ["-c", "print('DoTask')"],
-                                }
-                            }
-                        },
-                    }
-                ],
-            },
-            [TEST_RUN_ENV_TEMPLATE_FAILS_ENTER, TEST_RUN_ENV_TEMPLATE_1],  # Env Templates
-            "SimpleStep",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            re.compile(r"EnvEnterFail Enter.*EnvEnterFail Exit"),
-            # We should not run the second environment
-            "Env1 Enter",
-            True,
-            id="EnterEnvFails_2",
-        ),
-        pytest.param(
-            {
-                "specificationVersion": "jobtemplate-2023-09",
-                "name": "Test",
-                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-                "steps": [
-                    {
-                        "name": "SimpleStep",
-                        "script": {
-                            "actions": {
-                                "onRun": {
-                                    "command": "python",
-                                    "args": ["-c", "import sys; print('DoTask'); sys.exit(1)"],
-                                }
-                            }
-                        },
-                    }
-                ],
-            },
-            [TEST_RUN_ENV_TEMPLATE_1],  # Env Templates
-            "SimpleStep",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            # Task fails; we should still run everything
-            re.compile(r"Env1 Enter.*DoTask.*Env1 Exit"),
-            "",
-            True,
-            id="TaskFails",
-        ),
-        pytest.param(
-            {
-                "specificationVersion": "jobtemplate-2023-09",
-                "name": "Test",
-                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-                "steps": [
-                    {
-                        "name": "SimpleStep",
-                        "script": {
-                            "actions": {
-                                "onRun": {
-                                    "command": "python",
-                                    "args": ["-c", "print('DoTask')"],
-                                }
-                            }
-                        },
-                    }
-                ],
-            },
-            [TEST_RUN_ENV_TEMPLATE_FAILS_EXIT],  # Env Templates
-            "SimpleStep",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            re.compile(
-                # environment exit fails; we still run everything
-                r"EnvExitFail Enter.*DoTask.*EnvExitFail Exit"
-            ),
-            "",
-            True,
-            id="EnvExitFails",
-        ),
-        pytest.param(
-            {
-                "specificationVersion": "jobtemplate-2023-09",
-                "name": "Test",
-                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-                "steps": [
-                    {
-                        "name": "SimpleStep",
-                        "script": {
-                            "actions": {
-                                "onRun": {
-                                    "command": "python",
-                                    "args": ["-c", "print('DoTask')"],
-                                }
-                            }
-                        },
-                    }
-                ],
-            },
-            [TEST_RUN_ENV_TEMPLATE_1, TEST_RUN_ENV_TEMPLATE_FAILS_EXIT],  # Env Templates
-            "SimpleStep",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            re.compile(
-                # environment exit fails; we still run everything
-                r"Env1 Enter.*EnvExitFail Enter.*DoTask.*EnvExitFail Exit.*Env1 Exit"
-            ),
-            "",
-            True,
-            id="EnvExitFails_2",
-        ),
-        pytest.param(
-            {
-                "specificationVersion": "jobtemplate-2023-09",
-                "name": "TimeoutTest",
-                "parameterDefinitions": [{"name": "J", "type": "STRING"}],
-                "steps": [
-                    {
-                        "name": "Timeout",
-                        "script": {
-                            "actions": {
-                                "onRun": {
-                                    "command": "python",
-                                    "args": [
-                                        "-c",
-                                        # Obfuscate "EXIT_NORMAL" so it doesn't appear in the log when Windows prints the command that's run to the log.
-                                        "import time,sys; print('SLEEP'); sys.stdout.flush(); time.sleep(5); print(chr(69)+'XIT_NORMAL')",
-                                    ],
-                                    "timeout": 2,
-                                }
-                            }
-                        },
-                    }
-                ],
-            },
-            [],  # Env Templates
-            "Timeout",  # step name
-            [],  # Task params
-            False,  # run_dependencies
-            re.compile(r"SLEEP"),
-            "EXIT_NORMAL",
-            True,
-            id="TaskTimeout",
-        ),
-    ],
+    "job_template_file,env_template_files,step_name,task_params,run_dependencies,expected_output_regex,expected_not_in_output,expected_exit_code",
+    PARAMETRIZE_CASES,
 )
 def test_do_run_success(
-    job_template: dict[str, Any],
-    env_templates: list[dict[str, Any]],
+    job_template_file: str,
+    env_template_files: list[str],
     step_name: str,
     task_params: list[str],
     run_dependencies: bool,
-    expected_output: re.Pattern[str],
+    expected_output_regex: re.Pattern[str],
     expected_not_in_output: str,
-    expect_system_exit: bool,
-    caplog: pytest.LogCaptureFixture,
+    expected_exit_code: int,
+    capsys: pytest.CaptureFixture,
 ) -> None:
     """Test that the 'run' command correctly runs templates and obtains the expected results."""
 
-    files_created: list[Path] = []
-    try:
-        # GIVEN
-        with tempfile.NamedTemporaryFile(
-            mode="w+t", suffix=".template.json", encoding="utf8", delete=False
-        ) as job_template_file:
-            json.dump(job_template, job_template_file.file)
-        files_created.append(Path(job_template_file.name))
+    template_dir = Path(__file__).parent / "templates"
 
-        environments_files: list[str] = []
-        for e in env_templates:
-            with tempfile.NamedTemporaryFile(
-                mode="w+t", suffix=".env.template.json", encoding="utf8", delete=False
-            ) as file:
-                json.dump(e, file.file)
-            files_created.append(Path(file.name))
-            environments_files.append(file.name)
-
-        args = Namespace(
-            path=Path(job_template_file.name),
-            step=step_name,
-            job_params=["J=Jvalue"],
-            task_params=task_params,
-            tasks=None,
-            maximum_tasks=-1,
-            run_dependencies=run_dependencies,
-            path_mapping_rules=None,
-            environments=environments_files,
-            output="human-readable",
-            verbose=False,
-            preserve=False,
+    extra_options = []
+    if run_dependencies:
+        extra_options.append("--run-dependencies")
+    if env_template_files:
+        extra_options.extend(
+            [
+                entry
+                for file in env_template_files
+                for entry in ["--environment", str(template_dir / file)]
+            ]
         )
 
-        # WHEN
-        try:
-            do_run(args)
-        except SystemExit:
-            assert expect_system_exit
-        else:
-            assert not expect_system_exit
+    args = [
+        "run",
+        str(template_dir / job_template_file),
+        "--step",
+        step_name,
+        "-p",
+        "J=Jvalue",
+        *task_params,
+        *extra_options,
+        "--extensions",
+        "",
+    ]
 
-        # THEN
-        assert not any(
-            os.linesep in m for m in caplog.messages
-        ), "paranoia; Windows is acting weird"
-        assert expected_output.search("".join(m.strip() for m in caplog.messages))
-        if expected_not_in_output:
-            assert expected_not_in_output not in caplog.text
-    finally:
-        for f in files_created:
-            f.unlink()
+    print(f"openjd {shlex.join(args)}")
+
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=expected_exit_code)
+
+    expected_was_found = expected_output_regex.search(outerr.out.replace("\n", "\\n"), re.MULTILINE)
+    if expected_was_found is None:
+        # Print out the environment and job templates for easier error debugging from the log outputs
+        print("\n ENV TEMPLATES:\n")
+        print(json.dumps(env_template_files, indent=1))
+        print("\n JOB TEMPLATE:\n")
+        print(json.dumps(job_template_file, indent=1))
+    assert (
+        expected_was_found
+    ), f"Regex r'{expected_output_regex.pattern}' does not match the output:\n{format_capsys_outerr(outerr)}"
+    if expected_not_in_output:
+        assert expected_not_in_output not in outerr.out
 
 
 def test_preserve_option(
@@ -571,6 +277,7 @@ def test_preserve_option(
         args = Namespace(
             path=Path(job_template_file.name),
             step="TestStep",
+            timestamp_format=LoggingTimestampFormat.RELATIVE,
             job_params=[],
             task_params=None,
             tasks=None,
@@ -581,6 +288,7 @@ def test_preserve_option(
             output="human-readable",
             verbose=False,
             preserve=True,
+            extensions="",
         )
 
         # WHEN
@@ -634,6 +342,7 @@ def test_verbose_option(
         args = Namespace(
             path=Path(job_template_file.name),
             step="TestStep",
+            timestamp_format=LoggingTimestampFormat.RELATIVE,
             job_params=[],
             task_params=None,
             tasks=None,
@@ -644,6 +353,7 @@ def test_verbose_option(
             output="human-readable",
             verbose=True,
             preserve=False,
+            extensions="",
         )
 
         # WHEN
@@ -666,6 +376,7 @@ def test_do_run_error():
     mock_args = Namespace(
         path=Path("some-file.json"),
         step="aStep",
+        timestamp_format=LoggingTimestampFormat.RELATIVE,
         job_params=None,
         task_params=None,
         run_dependencies=False,
@@ -674,6 +385,7 @@ def test_do_run_error():
         output="human-readable",
         verbose=False,
         preserve=False,
+        extensions="",
     )
     with pytest.raises(SystemExit):
         do_run(mock_args)
@@ -728,6 +440,7 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
             run_args = Namespace(
                 path=Path(temp_template.name),
                 step="TestStep",
+                timestamp_format=LoggingTimestampFormat.RELATIVE,
                 job_params=[r"TestPath=/home/test" if os.name == "posix" else r"TestPath=c:\test"],
                 task_params=None,
                 tasks=None,
@@ -738,6 +451,7 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
                 maximum_tasks=1,
                 verbose=False,
                 preserve=False,
+                extensions="",
             )
 
         # WHEN
@@ -772,6 +486,7 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
         mock_args = Namespace(
             path=Path(temp_template.name),
             step="FakeStep",
+            timestamp_format=LoggingTimestampFormat.RELATIVE,
             job_params=None,
             task_params=None,
             tasks=None,
@@ -782,6 +497,7 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
             output="human-readable",
             verbose=False,
             preserve=False,
+            extensions="",
         )
     with pytest.raises(SystemExit):
         do_run(mock_args)
@@ -793,54 +509,71 @@ def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
     Path(temp_template.name).unlink()
 
 
+PARAMETRIZE_CASES = (
+    pytest.param(SampleSteps.BareStep, [], [], id="Bare Step without --run-dependencies"),
+    pytest.param(
+        SampleSteps.BareStep, [], ["--run-dependencies"], id="Bare Step with --run-dependencies"
+    ),
+    pytest.param(
+        SampleSteps.BareStep,
+        [],
+        ["--run-dependencies"],
+        id="--run-dependencies with no dependencies",
+    ),
+    pytest.param(SampleSteps.TaskParamStep, [], ["--run-dependencies"], id="Task param Step"),
+    pytest.param(SampleSteps.NormalStep, [], ["--run-dependencies"], id="Catch-all Step"),
+    pytest.param(
+        SampleSteps.NormalStep,
+        [],
+        ["--run-dependencies"],
+        id="--run-dependencies with Step environment but no dependencies",
+    ),
+    pytest.param(
+        SampleSteps.DependentStep,
+        [SampleSteps.BareStep],
+        ["--run-dependencies"],
+        id="Step with direct dependency",
+    ),
+    pytest.param(
+        SampleSteps.ExtraDependentStep,
+        [
+            SampleSteps.BareStep,
+            SampleSteps.DependentStep,
+            SampleSteps.TaskParamStep,
+        ],
+        ["--run-dependencies"],
+        id="Step with transitive and direct dependencies",
+    ),
+    pytest.param(SampleSteps.DependentStep, [], [], id="Exclude dependencies implicitly"),
+    pytest.param(
+        SampleSteps.DependentStep,
+        [],
+        ["--no-run-dependencies"],
+        id="Exclude dependencies with explicit option",
+    ),
+    pytest.param(
+        SampleSteps.StepDepHasStepEnv,
+        [SampleSteps.NormalStep],
+        ["--run-dependencies"],
+        id="Step with a dependency that has step envs",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "step_index,dependency_indexes,extra_options",
+    PARAMETRIZE_CASES,
+)
 @pytest.mark.usefixtures(
     "sample_job_and_dirs", "sample_step_map", "patched_session_cleanup", "capsys"
 )
-@pytest.mark.parametrize(
-    "step_index,dependency_indexes,should_run_dependencies",
-    [
-        pytest.param(SampleSteps.BareStep, [], False, id="Bare Step"),
-        pytest.param(
-            SampleSteps.BareStep,
-            [],
-            True,
-            id="--run-dependencies with no dependencies",
-        ),
-        pytest.param(SampleSteps.TaskParamStep, [], False, id="Task param Step"),
-        pytest.param(SampleSteps.NormalStep, [], False, id="Catch-all Step"),
-        pytest.param(
-            SampleSteps.NormalStep,
-            [],
-            True,
-            id="--run-dependencies with Step environment but no dependencies",
-        ),
-        pytest.param(
-            SampleSteps.DependentStep,
-            [SampleSteps.BareStep],
-            True,
-            id="Step with direct dependency",
-        ),
-        pytest.param(
-            SampleSteps.ExtraDependentStep,
-            [
-                SampleSteps.BareStep,
-                SampleSteps.DependentStep,
-                SampleSteps.TaskParamStep,
-            ],
-            True,
-            id="Step with transitive and direct dependencies",
-        ),
-        pytest.param(SampleSteps.DependentStep, [], False, id="Exclude dependencies"),
-    ],
-)
 def test_run_local_session_success(
-    sample_job_and_dirs: tuple,
     sample_step_map: dict,
     patched_session_cleanup: Mock,
     capsys: pytest.CaptureFixture,
-    step_index: int,
-    dependency_indexes: list[int],
-    should_run_dependencies: bool,
+    step_index: SampleSteps,
+    dependency_indexes: list[SampleSteps],
+    extra_options: list[str],
 ):
     """
     Test that various Job structures can successfully run local Sessions.
@@ -848,79 +581,82 @@ def test_run_local_session_success(
     Note that we don't need to test with custom Task parameters, as those are
     tested within the `LocalSession` object.
     """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
+
+    template_dir = Path(__file__).parent / "templates"
     path_mapping_rules = [
         PathMappingRule(
             source_path_format=PathFormat.WINDOWS,
             source_path=PureWindowsPath(r"C:\test"),
             destination_path=PurePosixPath("/mnt/test"),
-        )
+        ).to_dict()
     ]
-    with (
-        patch.object(
-            LocalSession, "initialize", autospec=True, side_effect=LocalSession.initialize
-        ) as patched_initialize,
-        patch.object(
-            Session, "__init__", autospec=True, side_effect=Session.__init__
-        ) as patched_session_init,
-    ):
-        response = _run_local_session(
-            job=sample_job,
-            step_map=sample_step_map,
-            step=sample_job.steps[step_index],
-            path_mapping_rules=path_mapping_rules,
-            should_run_dependencies=should_run_dependencies,
-        )
-        assert patched_initialize.call_args.kwargs["dependencies"] == [
-            sample_job.steps[i] for i in dependency_indexes
-        ]
-        assert patched_initialize.call_args.kwargs["step"] == sample_job.steps[step_index]
-        assert patched_session_init.call_args.kwargs["path_mapping_rules"] == path_mapping_rules
+    args = [
+        "run",
+        str(template_dir / "job_with_test_steps.yaml"),
+        "--step",
+        step_index.name,
+        "--extensions",
+        "",
+        *extra_options,
+        "--path-mapping-rules",
+        json.dumps({"version": "pathmapping-1.0", "path_mapping_rules": path_mapping_rules}),
+    ]
+    print(f"openjd {shlex.join(args)}")
 
-    assert response.status == "success"
-    assert isinstance(response, OpenJDRunResult)
-    assert response.job_name == sample_job.name
-    assert response.step_name == sample_job.steps[step_index].name
-    assert "Open Job Description CLI: All actions completed successfully" in capsys.readouterr().out
-    patched_session_cleanup.assert_called()
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+    for expected_output_regex in [
+        "Running job 'my-job'",
+        *(f"Running step '{dep_index.name}'" for dep_index in dependency_indexes),
+        f"Running step '{step_index.name}'",
+        "All actions completed successfully!",
+    ]:
+        assert re.search(
+            expected_output_regex, outerr.out, re.MULTILINE
+        ), f"Regex r'{expected_output_regex}' does not match the output:\n{format_capsys_outerr(outerr)}"
 
 
-@pytest.mark.usefixtures("sample_job_and_dirs", "sample_step_map")
 @pytest.mark.parametrize(
-    "step_index,should_run_dependencies,expected_error",
+    "step_index,expected_error_regex",
     [
         pytest.param(
-            SampleSteps.BadCommand, False, "Session ended with errors", id="Badly-formed command"
-        ),
-        pytest.param(
-            SampleSteps.ShouldSeparateSession,
-            True,
-            "cannot be run in the same local Session",
-            id="Can't run in single Session",
+            SampleSteps.BadCommand, "Session ended with errors", id="Badly-formed command"
         ),
     ],
 )
 def test_run_local_session_failed(
-    sample_job_and_dirs: tuple,
-    sample_step_map: dict,
-    step_index: int,
-    should_run_dependencies: bool,
-    expected_error: str,
+    capsys,
+    step_index: SampleSteps,
+    expected_error_regex: str,
 ):
     """
     Test the output of a Session that finishes after encountering errors.
     """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
-    response = _run_local_session(
-        job=sample_job,
-        step_map=sample_step_map,
-        step=sample_job.steps[step_index],
-        path_mapping_rules=[],
-        should_run_dependencies=should_run_dependencies,
-    )
+    template_dir = Path(__file__).parent / "templates"
+    path_mapping_rules = [
+        PathMappingRule(
+            source_path_format=PathFormat.WINDOWS,
+            source_path=PureWindowsPath(r"C:\test"),
+            destination_path=PurePosixPath("/mnt/test"),
+        ).to_dict()
+    ]
+    args = [
+        "run",
+        str(template_dir / "job_with_test_steps.yaml"),
+        "--step",
+        step_index.name,
+        "--extensions",
+        "",
+        "--path-mapping-rules",
+        json.dumps({"version": "pathmapping-1.0", "path_mapping_rules": path_mapping_rules}),
+    ]
+    print(f"openjd {shlex.join(args)}")
 
-    assert response.status == "error"
-    assert expected_error in response.message
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+    assert re.search(
+        expected_error_regex, outerr.out, re.MULTILINE
+    ), f"Regex r'{expected_error_regex}' does not match the output:\n{format_capsys_outerr(outerr)}"
 
 
 class TestProcessTaskParams:
@@ -1075,66 +811,86 @@ class TestProcessTasks:
                 _process_tasks(given)
 
 
-class TestValidateTaskParams:
+@pytest.mark.parametrize(
+    "task_params",
+    [
+        pytest.param(
+            ["--tasks", '[{"Foo": "1", "Bar": "Bar1"}]'], id="one task, all params defined"
+        ),
+        pytest.param(
+            ["--tasks", '[{"Foo": "1", "Bar": "Bar1"}, {"Foo": "1", "Bar": "Bar1"}]'],
+            id="two tasks",
+        ),
+    ],
+)
+def test_task_param_validation_success(capsys, task_params: list[str]) -> None:
+    template_dir = Path(__file__).parent / "templates"
 
-    @pytest.mark.parametrize(
-        "given",
-        [
-            pytest.param([{"Foo": "1", "Bar": "Bar1"}], id="one task, all params defined"),
-            pytest.param(
-                [{"Foo": "1", "Bar": "Bar1"}, {"Foo": "1", "Bar": "Bar1"}], id="two tasks"
-            ),
-        ],
-    )
-    def test_success(self, given: list[dict[str, str]]) -> None:
-        # GIVEN
-        job_template = decode_job_template(template=TEST_RUN_JOB_TEMPLATE_BASIC)
-        job = create_job(
-            job_template=job_template,
-            job_parameter_values={
-                "J": ParameterValue(type=ParameterValueType.STRING, value="Jvalue")
-            },
-        )
-        step = job.steps[0]
+    args = [
+        "run",
+        str(template_dir / "basic.yaml"),
+        "-p",
+        "J=Jvalue",
+        *task_params,
+        "--extensions",
+        "",
+    ]
 
-        # THEN
-        # Does not raise
-        _validate_task_params(step, given)
+    print(f"openjd {shlex.join(args)}")
 
-    @pytest.mark.parametrize(
-        "given, expected_error",
-        [
-            pytest.param(
-                [{"Bar": "Bar1"}], "Task 0 is missing values for parameters: Foo", id="missing Foo"
-            ),
-            pytest.param(
-                [{"Bar": "Bar1"}, {"Foo": "1"}],
-                "Task 0 is missing values for parameters: Foo.*\n.*Task 1 is missing values for parameters: Bar",
-                id="missing Foo & Bar; separate tasks",
-            ),
-            pytest.param(
-                [{"Foo": "1", "Bar": "Bar1", "Baz": "wut"}],
+    # Ensure it runs with success exit code
+    run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+
+@pytest.mark.parametrize(
+    "task_params, expected_error_list",
+    [
+        pytest.param(
+            ["-tp", "Bar=Bar1"], ["Task 0 is missing values for parameters: Foo"], id="missing Foo"
+        ),
+        pytest.param(
+            ["--tasks", '[{"Bar":"Bar1"}, {"Foo":"1"}]'],
+            [
+                "Task 0 is missing values for parameters: Foo",
+                "Task 1 is missing values for parameters: Bar",
+            ],
+            id="missing Foo & Bar; separate tasks",
+        ),
+        pytest.param(
+            ["-tp", "Foo=1", "-tp", "Bar=Bar1", "-tp", "Baz=wut"],
+            ["Task 0 defines unknown parameters: Baz"],
+            id="extra parameter",
+        ),
+        pytest.param(
+            ["-tp", "Bar=Bar1", "-tp", "Baz=wut"],
+            [
                 "Task 0 defines unknown parameters: Baz",
-                id="extra parameter",
-            ),
-            pytest.param(
-                [{"Bar": "Bar1", "Baz": "wut"}],
-                "Task 0 defines unknown parameters: Baz.*\n.*Task 0 is missing values for parameters: Foo",
-                id="missing & extra parameter",
-            ),
-        ],
-    )
-    def test_errors(self, given: list[dict[str, str]], expected_error: str) -> None:
-        # GIVEN
-        job_template = decode_job_template(template=TEST_RUN_JOB_TEMPLATE_BASIC)
-        job = create_job(
-            job_template=job_template,
-            job_parameter_values={
-                "J": ParameterValue(type=ParameterValueType.STRING, value="Jvalue")
-            },
-        )
-        step = job.steps[0]
+                "Task 0 is missing values for parameters: Foo",
+            ],
+            id="missing & extra parameter",
+        ),
+    ],
+)
+def test_task_param_validation_errors(
+    capsys, task_params: list[str], expected_error_list: list[str]
+) -> None:
+    template_dir = Path(__file__).parent / "templates"
 
-        # THEN
-        with pytest.raises(RuntimeError, match=expected_error):
-            _validate_task_params(step, given)
+    args = [
+        "run",
+        str(template_dir / "basic.yaml"),
+        "-p",
+        "J=Jvalue",
+        *task_params,
+        "--extensions",
+        "",
+    ]
+
+    print(f"openjd {shlex.join(args)}")
+
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+    for expected_error in expected_error_list:
+        assert (
+            expected_error in outerr.out
+        ), f"Message r'{expected_error}' was not found in the output:\n{format_capsys_outerr(outerr)}"

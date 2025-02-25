@@ -1,0 +1,79 @@
+specificationVersion: 'jobtemplate-2023-09'
+extensions:
+  - TASK_CHUNKING
+name: Chunked Job
+
+parameterDefinitions:
+- name: Items
+  type: STRING
+  default: 1-40
+- name: ChunkSize
+  type: INT
+  default: 10
+- name: TargetRuntime
+  type: INT
+  default: 0
+- name: TaskSleepTime
+  type: FLOAT
+  default: 0.01
+
+steps:
+- name: Chunked Step
+
+  parameterSpace:
+    taskParameterDefinitions:
+    - name: Item
+      type: CHUNK[INT]
+      range: "{{Param.Items}}"
+      chunks:
+        defaultTaskCount: "{{Param.ChunkSize}}"
+        targetRuntimeSeconds: "{{Param.TargetRuntime}}"
+        rangeConstraint: NONCONTIGUOUS
+
+  script:
+    actions:
+      onRun:
+        command: bash
+        args: ['{{Task.File.Run}}']
+    embeddedFiles:
+      - name: GetSleepTime
+        type: TEXT
+        filename: get_sleep_time.py
+        data: |
+          """
+          Converts an Open Job Description range expression into a sleep time according to the job parameters.
+          * https://github.com/OpenJobDescription/openjd-specifications/wiki/2023-09-Template-Schemas#34111-intrangeexpr
+          """
+
+          import sys, re
+
+          task_sleep_time = float(sys.argv[2])
+
+          def range_expr_to_list(range_expr):
+              # Regex that matches "<int>", "<int>-<int>", or "<int>-<int>:<int>"
+              int_pat = r"\s*(-?[0-9]+)\s*"
+              part_re = re.compile(f"^{int_pat}(?:-{int_pat}(?::{int_pat})?)?$")
+              result = []
+              for part in range_expr.split(","):
+                  if m := part_re.match(part):
+                      start, end, step = m.groups()
+                      if step is not None:
+                          # Linear sequence "3-7:2" means the values [3, 5, 7].
+                          result.extend(range(int(start), int(end) + (int(step)//abs(int(step))), int(step)))
+                      elif end is not None:
+                          # Interval "3-6" means the values [3, 4, 5, 6].
+                          result.extend(range(int(start), int(end) + 1))
+                      else:
+                          # Integer "3" means the values [3].
+                          result.append(int(start))
+                  else:
+                      raise ValueError(f"Invalid frame range expression: {range_expr}")
+              return result
+
+          print(task_sleep_time * len(range_expr_to_list(sys.argv[1])))
+      - name: Run
+        type: TEXT
+        data: |
+          set -xeuo pipefail
+
+          sleep "$(python '{{Task.File.GetSleepTime}}' '{{Task.Param.Item}}' '{{Param.TaskSleepTime}}')"
