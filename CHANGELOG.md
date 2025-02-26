@@ -1,3 +1,9 @@
+## 0.5.1 (2025-02-26)
+
+### Features
+
+* Update to use Pydantic V2, and support task chunking (#134) ([`ad53f68`](https://github.com/OpenJobDescription/openjd-cli/pull/134/commits/ad53f689117d98273fb034916bcdd250e49ccffd))
+
 ## 0.5.0 (2024-11-13)
 
 
