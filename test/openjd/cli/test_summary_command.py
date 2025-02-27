@@ -21,7 +21,7 @@ from openjd.model import (
     ParameterValue,
     ParameterValueType,
     create_job,
-    decode_template,
+    decode_job_template,
 )
 
 
@@ -236,7 +236,7 @@ def test_get_output_step_summary_success(
     """
     Test that `output_summary_result` returns an object with the expected values when called with a Step.
     """
-    template = decode_template(template=template_dict)
+    template = decode_job_template(template=template_dict)
     job = create_job(job_template=template, job_parameter_values=mock_job_params)
 
     response = output_summary_result(job, step_name)
@@ -256,7 +256,7 @@ def test_output_step_summary_result_error():
     Test that `output_summary_result` throws an error if a non-existent Step name is provided.
     (function only has one error state)
     """
-    template = decode_template(template=MOCK_TEMPLATE)
+    template = decode_job_template(template=MOCK_TEMPLATE)
     job = create_job(job_template=template, job_parameter_values={})
 
     response = output_summary_result(job, "no step")
@@ -452,7 +452,7 @@ def test_output_job_summary_result_success(
     """
     Test that `output_summary_result` returns an object with the expected values when called on a Job.
     """
-    template = decode_template(template=template_dict)
+    template = decode_job_template(template=template_dict)
     job = create_job(job_template=template, job_parameter_values=mock_params)
 
     response = output_summary_result(job)
