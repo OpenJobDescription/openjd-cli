@@ -1,3 +1,10 @@
+## 0.6.0 (2025-03-07)
+
+
+### Features
+* Support adaptive chunking, general CLI improvement ([`664d008`](https://github.com/OpenJobDescription/openjd-cli/commit/664d0083c0e9d2d973a88e1e630e2af6cef67cc1))
+
+
 ## 0.5.1 (2025-02-26)
 
 ### Features
