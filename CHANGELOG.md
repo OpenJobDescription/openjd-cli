@@ -1,9 +1,10 @@
 ## 0.6.0 (2025-03-07)
 
+### BREAKING CHANGES
+* The logging output has changed to use relative timestamps by default, and print more messages about the job and steps that are running.
 
 ### Features
 * Support adaptive chunking, general CLI improvement ([`664d008`](https://github.com/OpenJobDescription/openjd-cli/commit/664d0083c0e9d2d973a88e1e630e2af6cef67cc1))
-
 
 ## 0.5.1 (2025-02-26)
 
