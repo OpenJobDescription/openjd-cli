@@ -84,7 +84,7 @@ def test_openjd_run_on_chunked_job_default_options(capsys):
 
 def test_openjd_run_on_chunked_job_adaptive_chunking(capsys):
     # Test that running chunked_job.yaml with adaptive chunking and the TargetRuntime cranked really high
-    # resutls in two chunks, the first being one task, and the second being the remainder.
+    # results in two chunks, the first being one task, and the second being the remainder.
 
     expected_message_regex_list = [
         r"Item\(CHUNK\[INT\]\) = 1$",
@@ -119,7 +119,7 @@ def test_openjd_run_on_chunked_job_maximum_task_count(capsys, target_runtime):
     # Runs with TargetRuntime=0 (fixed chunk size) and TargetRuntime=1 (adaptive chunk size) to
     # exercise both task running inner loops.
     expected_message_regex_list = [
-        "Chunks run: 5$",
+        "Chunks run: 3$",
     ]
 
     outerr = run_openjd_cli_main(
@@ -134,7 +134,7 @@ def test_openjd_run_on_chunked_job_maximum_task_count(capsys, target_runtime):
             "-p",
             f"TargetRuntime={target_runtime}",
             "--maximum-tasks",
-            "5",
+            "3",
         ],
         expected_exit_code=0,
     )
