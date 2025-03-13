@@ -39,7 +39,7 @@ Source = "https://github.com/OpenJobDescription/openjd-cli"
 
 
 [project.scripts]
-openjd = "openjd:__main__.main"
+openjd = "openjd.cli:main"
 
 
 [tool.hatch.build]
