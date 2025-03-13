@@ -1,3 +1,10 @@
+## 0.6.1 (2025-03-13)
+
+
+
+### Bug Fixes
+* Usage of __main__.py is not idiomatic ([`16ee6ae`](https://github.com/OpenJobDescription/openjd-cli/commit/16ee6ae63900b752cbaec7f1e68e758a64a56c99))
+
 ## 0.6.0 (2025-03-07)
 
 ### BREAKING CHANGES
