@@ -9,7 +9,7 @@
                 "actions": {
                     "onRun": {
                         "command": "python",
-                        "args": ["-c", "print('DoTask')"],
+                        "args": ["-c", "print('DoTask {{Param.J}}')"],
                     }
                 }
             },

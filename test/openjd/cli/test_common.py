@@ -366,7 +366,7 @@ def test_job_from_template_success(
     template_dir, current_working_dir = template_dir_and_cwd
     template = decode_job_template(template=template_dict)
 
-    result = job_from_template(template, mock_params, template_dir, current_working_dir)
+    result, _ = job_from_template(template, [], mock_params, template_dir, current_working_dir)
     assert result.name == expected_job_name
     assert [step.model_dump(exclude_none=True) for step in result.steps] == [
         step.model_dump(exclude_none=True) for step in template.steps
@@ -415,7 +415,7 @@ def test_job_from_template_error(
     template = decode_job_template(template=template_dict)
 
     with pytest.raises(RuntimeError) as rte:
-        job_from_template(template, mock_params, template_dir, current_working_dir)
+        job_from_template(template, [], mock_params, template_dir, current_working_dir)
 
     assert expected_error in str(rte.value)
 
@@ -455,8 +455,9 @@ def test_generate_job_success(
         new=Mock(side_effect=job_from_template),
     ) as patched_job_from_template:
         generate_job(mock_args, supported_extensions=[])
+        print(patched_job_from_template.call_args_list)
         patched_job_from_template.assert_called_once_with(
-            ANY, expected_param_list, Path(temp_template.name).parent, Path(os.getcwd())
+            ANY, [], expected_param_list, Path(temp_template.name).parent, Path(os.getcwd())
         )
 
     Path(temp_template.name).unlink()
