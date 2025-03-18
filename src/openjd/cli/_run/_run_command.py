@@ -28,6 +28,7 @@ from openjd.model import (
     DecodeValidationError,
     EnvironmentTemplate,
     Job,
+    JobParameterValues,
     Step,
     StepDependencyGraph,
     StepParameterSpaceIterator,
@@ -317,6 +318,7 @@ def _validate_task_params(step: Step, task_params: list[dict[str, str]]) -> None
 def _run_local_session(
     *,
     job: Job,
+    job_parameter_values: JobParameterValues,
     step_list: list[Step],
     selected_step: Optional[Step],
     timestamp_format: LoggingTimestampFormat,
@@ -337,6 +339,7 @@ def _run_local_session(
         step_name = ""
         with LocalSession(
             job=job,
+            job_parameter_values=job_parameter_values,
             timestamp_format=timestamp_format,
             session_id="CLI-session",
             path_mapping_rules=path_mapping_rules,
@@ -442,7 +445,9 @@ def do_run(args: Namespace) -> OpenJDCliResult:
 
     try:
         # Raises: RuntimeError
-        the_job = generate_job(args, supported_extensions=extensions)
+        the_job, job_parameter_values = generate_job(
+            args, environments, supported_extensions=extensions
+        )
 
         # Map Step names to Step objects so they can be easily accessed
         step_map = {step.name: step for step in the_job.steps}
@@ -509,6 +514,7 @@ def do_run(args: Namespace) -> OpenJDCliResult:
 
     return _run_local_session(
         job=the_job,
+        job_parameter_values=job_parameter_values,
         step_list=step_list,
         selected_step=selected_step,
         task_parameter_values=task_parameter_values,

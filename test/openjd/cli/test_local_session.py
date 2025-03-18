@@ -60,7 +60,7 @@ def test_localsession_initialize(
     """
     Test that initializing the local Session enters external and job environments, and is ready to run tasks.
     """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
+    sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
     with (
         patch.object(
             LocalSession,
@@ -72,7 +72,9 @@ def test_localsession_initialize(
             LocalSession, "run_step", autospec=True, side_effect=LocalSession.run_step
         ) as patched_run_step,
     ):
-        with LocalSession(job=sample_job, session_id="my-session") as session:
+        with LocalSession(
+            job=sample_job, job_parameter_values=sample_job_parameters, session_id="my-session"
+        ) as session:
             assert session._openjd_session.state == SessionState.READY
 
             # It should have entered the external and job environments in order
@@ -91,12 +93,14 @@ def test_localsession_initialize(
 @pytest.mark.usefixtures("sample_job_and_dirs")
 def test_localsession_traps_sigint(sample_job_and_dirs: tuple):
     # Make sure that we hook up, and remove the signal handler when using the local session
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
+    sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
 
     # GIVEN
     with patch.object(local_session_mod, "signal") as signal_mod:
         # WHEN
-        with LocalSession(job=sample_job, session_id="test-id") as localsession:
+        with LocalSession(
+            job=sample_job, job_parameter_values=sample_job_parameters, session_id="test-id"
+        ) as localsession:
             pass
 
     # THEN
@@ -124,7 +128,7 @@ def test_localsession_run_success(
     """
     Test that calling `run_step` causes the local Session to run the tasks requested in that step.
     """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
+    sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
 
     if parameter_sets is None:
         parameter_sets = StepParameterSpaceIterator(
@@ -151,7 +155,9 @@ def test_localsession_run_success(
             LocalSession, "run_task", autospec=True, side_effect=LocalSession.run_task
         ) as patched_run_task,
     ):
-        with LocalSession(job=sample_job, session_id="my-session") as session:
+        with LocalSession(
+            job=sample_job, job_parameter_values=sample_job_parameters, session_id="my-session"
+        ) as session:
             session.run_step(
                 sample_job.steps[step_index],
                 task_parameters=parameter_sets,
@@ -192,7 +198,7 @@ def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.Capt
     """
     Test that a LocalSession can gracefully handle an error in its inner Session.
     """
-    sample_job, template_dir, current_working_dir = sample_job_and_dirs
+    sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
     with (
         patch.object(
             LocalSession,
@@ -201,7 +207,9 @@ def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.Capt
             side_effect=LocalSession.run_environment_enters,
         ) as patched_run_environment_enters,
     ):
-        with LocalSession(job=sample_job, session_id="bad-session") as session:
+        with LocalSession(
+            job=sample_job, job_parameter_values=sample_job_parameters, session_id="bad-session"
+        ) as session:
             with pytest.raises(LocalSessionFailed):
                 session.run_step(sample_job.steps[SampleSteps.BadCommand])
 

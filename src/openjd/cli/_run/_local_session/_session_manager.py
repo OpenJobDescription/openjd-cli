@@ -21,8 +21,6 @@ from openjd.model import (
     IntRangeExpr,
     Job,
     JobParameterValues,
-    ParameterValue,
-    ParameterValueType,
     Step,
     StepParameterSpaceIterator,
     TaskParameterSet,
@@ -78,6 +76,7 @@ class LocalSession:
         self,
         *,
         job: Job,
+        job_parameter_values: JobParameterValues,
         session_id: str,
         timestamp_format: LoggingTimestampFormat = LoggingTimestampFormat.RELATIVE,
         path_mapping_rules: Optional[list[PathMappingRule]] = None,
@@ -93,18 +92,9 @@ class LocalSession:
         self._environments = environments
 
         # Create an OpenJD Session
-        job_parameters: JobParameterValues
-        if job.parameters:
-            job_parameters = {
-                name: ParameterValue(type=ParameterValueType(param.type.value), value=param.value)
-                for name, param in job.parameters.items()
-            }
-        else:
-            job_parameters = dict[str, ParameterValue]()
-
         self._openjd_session = Session(
             session_id=self.session_id,
-            job_parameter_values=job_parameters,
+            job_parameter_values=job_parameter_values,
             path_mapping_rules=self._path_mapping_rules,
             callback=self._action_callback,
             retain_working_dir=retain_working_dir,
@@ -131,6 +121,11 @@ class LocalSession:
             signal(SIGTERM, SIG_DFL)
             self._started = False
 
+            # A blank line to separate the job log output from this status message
+            LOG.info(
+                msg="",
+                extra={"session_id": self.session_id},
+            )
             if self.failed:
                 LOG.info(
                     msg=f"Open Job Description CLI: ERROR executing action: '{self.failed_action}' (see Task logs for details)",

@@ -29,8 +29,9 @@ def sample_job_and_dirs(request):
 
         template = decode_job_template(template=MOCK_TEMPLATE)
         yield (
-            job_from_template(
+            *job_from_template(
                 template=template,
+                environments=[],
                 parameter_args=request.param,
                 job_template_dir=template_dir,
                 current_working_dir=current_working_dir,

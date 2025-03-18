@@ -35,7 +35,7 @@ def do_summary(args: Namespace) -> OpenJDCliResult:
 
     try:
         # Raises: RuntimeError
-        sample_job = generate_job(args, supported_extensions=extensions)
+        sample_job, _ = generate_job(args, supported_extensions=extensions)
     except RuntimeError as rte:
         return OpenJDCliResult(status="error", message=str(rte))
 

@@ -4,14 +4,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Union
+from typing import Optional, Union
 import yaml
 
 from ._validation_utils import get_doc_type
 from openjd.model import (
     DecodeValidationError,
     DocumentType,
+    EnvironmentTemplate,
     Job,
+    JobParameterValues,
     JobTemplate,
     create_job,
     preprocess_job_parameters,
@@ -54,7 +56,7 @@ def get_params_from_file(parameter_string: str) -> Union[dict, list]:
     return parameters
 
 
-def get_job_params(parameter_args: list[str]) -> dict:
+def get_job_params(parameter_args: Optional[list[str]]) -> dict:
     """
     Resolves Job Parameters from a list of command-line arguments.
     Arguments may be a filepath or a string with format 'Key=Value'.
@@ -62,7 +64,8 @@ def get_job_params(parameter_args: list[str]) -> dict:
     Raises: RuntimeError if the provided Parameters are formatted incorrectly or can't be opened
     """
     parameter_dict: dict = {}
-    for arg in parameter_args:
+
+    for arg in parameter_args or []:
         arg = arg.strip()
         # Case 1: Provided argument is a filepath
         if arg.startswith("file://"):
@@ -104,17 +107,18 @@ def get_job_params(parameter_args: list[str]) -> dict:
 
 def job_from_template(
     template: JobTemplate,
+    environments: list[EnvironmentTemplate],
     parameter_args: list[str] | None,
     job_template_dir: Path,
     current_working_dir: Path,
-) -> Job:
+) -> tuple[Job, JobParameterValues]:
     """
-    Given a decoded Job Template and a user-inputted parameter dictionary,
-    generates a Job object.
+    Given a decoded Job Template and a user-input parameter dictionary,
+    generates a Job object and the parameter values for running the job.
 
     Raises: RuntimeError if parameters are an unsupported type or don't correspond to the template
     """
-    parameter_dict = get_job_params(parameter_args) if parameter_args else {}
+    parameter_dict = get_job_params(parameter_args)
 
     try:
         parameter_values = preprocess_job_parameters(
@@ -122,11 +126,17 @@ def job_from_template(
             job_parameter_values=parameter_dict,
             job_template_dir=job_template_dir,
             current_working_dir=current_working_dir,
+            environment_templates=environments,
         )
     except ValueError as ve:
         raise RuntimeError(str(ve))
 
     try:
-        return create_job(job_template=template, job_parameter_values=parameter_values)
+        job = create_job(
+            job_template=template,
+            job_parameter_values=parameter_values,
+            environment_templates=environments,
+        )
+        return (job, parameter_values)
     except DecodeValidationError as dve:
         raise RuntimeError(f"Could not generate Job from template and parameters: {str(dve)}")

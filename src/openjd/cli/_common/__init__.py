@@ -21,7 +21,7 @@ from ._validation_utils import (
     read_job_template,
     read_environment_template,
 )
-from openjd.model import DecodeValidationError, Job
+from openjd.model import DecodeValidationError, Job, JobParameterValues, EnvironmentTemplate
 
 __all__ = [
     "add_extensions_argument",
@@ -112,13 +112,20 @@ class SubparserGroup:
         return self.group.add_parser(name, **kwargs)
 
 
-def generate_job(args: Namespace, *, supported_extensions: list[str]) -> Job:
+def generate_job(
+    args: Namespace,
+    environments: list[EnvironmentTemplate] = [],
+    *,
+    supported_extensions: list[str],
+) -> tuple[Job, JobParameterValues]:
     try:
         # Raises: RuntimeError, DecodeValidationError
         template = read_job_template(args.path, supported_extensions=supported_extensions)
+
         # Raises: RuntimeError
         return job_from_template(
             template,
+            environments,
             args.job_params if args.job_params else None,
             Path(os.path.abspath(args.path.parent)),
             Path(os.getcwd()),
