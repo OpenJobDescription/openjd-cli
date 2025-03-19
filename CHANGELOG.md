@@ -1,3 +1,12 @@
+## 0.7.0 (2025-03-19)
+
+### BREAKING CHANGES
+* The functions generate_jobs and job_from_template have changed to accept the environments and return the job parameters
+  alongside the job. Constructing the LocalSession class now requires job parameters.
+
+### Bug Fixes
+* Running jobs with env templates does not support parameters ([`65a15b4`](https://github.com/OpenJobDescription/openjd-cli/commit/65a15b414bbd90a77c6b63451f5f052db2b8fcf8))
+
 ## 0.6.1 (2025-03-13)
 
 
