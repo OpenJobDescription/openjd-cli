@@ -9,7 +9,7 @@ import json
 import yaml
 import os
 
-from ._extensions import add_extensions_argument, process_extensions_argument
+from ._extensions import add_extensions_argument, process_extensions_argument, SUPPORTED_EXTENSIONS
 from ._job_from_template import (
     job_from_template,
     get_job_params,
@@ -33,6 +33,7 @@ __all__ = [
     "read_job_template",
     "read_environment_template",
     "validate_task_parameters",
+    "SUPPORTED_EXTENSIONS",
 ]
 
 
