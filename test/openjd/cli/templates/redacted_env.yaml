@@ -1,0 +1,52 @@
+specificationVersion: "jobtemplate-2023-09"
+extensions:
+  - REDACTED_ENV_VARS
+name: Test Redacted Env
+description: Test redacted environment variables
+
+jobEnvironments:
+  - name: RedactedEnv
+    script:
+      actions:
+        onEnter:
+          command: python
+          args: ["{{Env.File.Enter}}"]
+        onExit:
+          command: python
+          args: ["{{Env.File.Exit}}"]
+      embeddedFiles:
+        - name: Enter
+          type: TEXT
+          data: |
+            print("Setting redacted vars..")
+            print(f"openjd_redacted_env: SECRETVAR=SECRETVAL")
+            print(f"openjd_redacted_env: KEYSPACE =SECRETVAL")
+            print(f"openjd_redacted_env: VALSPACE= SPACEVAL")
+            print(f'openjd_redacted_env: "MULTILINE=first_line\\nsecond_line\\nthird_line"')
+        - name: Exit
+          type: TEXT
+          data: |
+            import os
+            print(f"SECRETVAR is {os.environ.get('SECRETVAR')}")
+            print(f"KEYSPACE is {os.environ.get('KEYSPACE')}")
+            print(f"VALSPACE is {os.environ.get('VALSPACE')}")
+            print(f"MULTILINE is {os.environ.get('VALSPACE')} END")
+            print("first_line")
+            print("second_line")
+            print("third_line")
+steps:
+  - name: CheckVars
+    script:
+      actions:
+        onRun:
+          command: python
+          args: ["{{Task.File.Run}}"]
+      embeddedFiles:
+        - name: Run
+          type: TEXT
+          data: |
+            import os
+            print(f"SECRETVAR is {os.environ.get('SECRETVAR')}")
+            print(f"KEYSPACE is {os.environ.get('KEYSPACE')}")
+            print(f"VALSPACE is {os.environ.get('VALSPACE')}")
+            print(f"MULTILINE is {os.environ.get('VALSPACE')} END")

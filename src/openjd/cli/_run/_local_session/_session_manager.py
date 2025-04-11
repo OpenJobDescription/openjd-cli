@@ -17,10 +17,14 @@ from ._actions import (
     EnvironmentType,
 )
 from ._logs import LocalSessionLogHandler, LogEntry, LoggingTimestampFormat
+from ..._common import SUPPORTED_EXTENSIONS
+
 from openjd.model import (
     IntRangeExpr,
     Job,
     JobParameterValues,
+    RevisionExtensions,
+    SpecificationRevision,
     Step,
     StepParameterSpaceIterator,
     TaskParameterSet,
@@ -83,6 +87,9 @@ class LocalSession:
         environments: Optional[list[Any]] = None,
         should_print_logs: bool = True,
         retain_working_dir: bool = False,
+        revision_extensions: RevisionExtensions = RevisionExtensions(
+            spec_rev=SpecificationRevision.v2023_09, supported_extensions=SUPPORTED_EXTENSIONS
+        ),
     ):
         self.session_id = session_id
         self._action_ended = Event()
@@ -98,6 +105,7 @@ class LocalSession:
             path_mapping_rules=self._path_mapping_rules,
             callback=self._action_callback,
             retain_working_dir=retain_working_dir,
+            revision_extensions=revision_extensions,
         )
 
         self._should_print_logs = should_print_logs

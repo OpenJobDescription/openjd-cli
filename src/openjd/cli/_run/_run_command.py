@@ -34,6 +34,8 @@ from openjd.model import (
     StepParameterSpaceIterator,
     ParameterValue,
     ParameterValueType,
+    RevisionExtensions,
+    SpecificationRevision,
     TaskParameterSet,
 )
 from openjd.sessions import PathMappingRule, LOG
@@ -328,6 +330,9 @@ def _run_local_session(
     path_mapping_rules: Optional[list[PathMappingRule]],
     should_print_logs: bool = True,
     retain_working_dir: bool = False,
+    revision_extensions: RevisionExtensions = RevisionExtensions(
+        spec_rev=SpecificationRevision.v2023_09, supported_extensions=[]
+    ),
 ) -> OpenJDCliResult:
     """
     Creates a Session object and listens for log messages to synchronously end the session.
@@ -346,6 +351,7 @@ def _run_local_session(
             environments=[env.environment for env in environments] if environments else [],
             should_print_logs=should_print_logs,
             retain_working_dir=retain_working_dir,
+            revision_extensions=revision_extensions,
         ) as session:
             for dep_step in step_list:
                 step_name = dep_step.name
@@ -512,6 +518,12 @@ def do_run(args: Namespace) -> OpenJDCliResult:
     except RuntimeError as rte:
         return OpenJDCliResult(status="error", message=str(rte))
 
+    # Create a RevisionExtensions object with the default specification version and enabled extensions
+    # We use the default v2023_09 since that's what we're currently supporting
+    revision_extensions = RevisionExtensions(
+        spec_rev=the_job.revision, supported_extensions=extensions
+    )
+
     return _run_local_session(
         job=the_job,
         job_parameter_values=job_parameter_values,
@@ -524,4 +536,5 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         path_mapping_rules=path_mapping_rules,
         should_print_logs=(args.output == "human-readable"),
         retain_working_dir=args.preserve,
+        revision_extensions=revision_extensions,
     )
