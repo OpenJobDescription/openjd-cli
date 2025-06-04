@@ -46,8 +46,6 @@ openjd = "openjd.cli:main"
 artifacts = [
   "*_version.py",
 ]
-only-packages = true
-
 
 [tool.hatch.version]
 source = "vcs"
@@ -70,15 +68,10 @@ destinations = [
 ]
 
 [tool.hatch.build.targets.sdist]
-packages = [
+include = [
   "src/openjd",
+  "hatch_version_hook.py",
 ]
-only-include = [
-  "src/openjd",
-]
-
-[tool.hatch.build.targets.sdist.force-include]
-"src/openjd/__main__.py" = "openjd/__main__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = [
