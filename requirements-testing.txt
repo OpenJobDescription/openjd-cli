@@ -1,5 +1,5 @@
 coverage[toml] == 7.*
-pytest == 8.3.*
+pytest == 8.4.*
 pytest-cov == 6.1.*
 pytest-timeout == 2.4.*
 pytest-xdist == 3.7.*
