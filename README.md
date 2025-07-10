@@ -177,7 +177,7 @@ You can download this package from:
 
 ### Verifying GitHub Releases
 
-See [VERIFYING_PGP_SIGNATURE](VERIFYING_PGP_SIGNATURE.md) for more information.
+See [Verifying GitHub Releases](https://github.com/OpenJobDescription/openjd-cli?tab=security-ov-file#verifying-github-releases) for more information.
 
 ## Security
 
