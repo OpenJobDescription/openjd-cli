@@ -1,3 +1,12 @@
+## 1.0.0 (2025-07-22)
+
+
+### Features
+* Adding support for redacted environment variable values through openjd_redacted_env ([`3070830`](https://github.com/OpenJobDescription/openjd-cli/commit/3070830f7e14f8115d2241aa051c03b0286f2d0c))
+
+### Bug Fixes
+* sdist failed to install (#157) ([`77a443e`](https://github.com/OpenJobDescription/openjd-cli/commit/77a443eab00a6850d482b6f8e4d426a82ba1acf7))
+
 ## 0.7.0 (2025-03-19)
 
 ### BREAKING CHANGES
