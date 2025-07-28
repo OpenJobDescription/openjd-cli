@@ -5,5 +5,5 @@ pytest-timeout == 2.4.*
 pytest-xdist == 3.7.*
 types-PyYAML == 6.*
 black == 25.*
-ruff == 0.11.*
+ruff == 0.12.*
 mypy == 1.16.*
