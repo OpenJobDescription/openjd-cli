@@ -5,6 +5,8 @@ import sys
 import traceback
 from typing import Optional
 
+from ._version import version
+
 from ._common import SubparserGroup
 
 from ._check import populate_argparser as populate_check_subparser
@@ -22,6 +24,11 @@ def create_argparser() -> ArgumentParser:
     """Generate the root argparser for the CLI"""
     parser = ArgumentParser(prog="openjd", usage="openjd <command> [arguments]")
     parser.set_defaults(func=lambda _: parser.print_help())
+
+    parser.add_argument(
+        "--version", action="version", version=f"Open Job Description CLI {version}"
+    )
+
     subcommands = SubparserGroup(
         parser,
         title="commands",
