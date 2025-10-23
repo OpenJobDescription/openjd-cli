@@ -1,3 +1,10 @@
+## 0.7.2 (2025-10-23)
+
+
+### Features
+* Add version argument (#190) ([`1cae604`](https://github.com/OpenJobDescription/openjd-cli/commit/1cae604f2920c202405acf11858768fcc77b0406))
+
+
 ## 0.7.1 (2025-07-22)
 
 
