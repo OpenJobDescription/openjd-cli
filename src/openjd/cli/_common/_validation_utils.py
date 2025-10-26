@@ -15,11 +15,12 @@ from openjd.model import (
 
 
 def get_doc_type(filepath: Path) -> DocumentType:
+    # If the file has a .json extension, treat it strictly
+    # as JSON, otherwise treat it as YAML.
     if filepath.suffix.lower() == ".json":
         return DocumentType.JSON
-    elif filepath.suffix.lower() in (".yaml", ".yml"):
+    else:
         return DocumentType.YAML
-    raise RuntimeError(f"'{str(filepath)}' is not JSON or YAML.")
 
 
 def read_template(template_file: Path) -> dict[str, Any]:

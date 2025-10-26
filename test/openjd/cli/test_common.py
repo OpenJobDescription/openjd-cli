@@ -50,6 +50,7 @@ def template_dir_and_cwd():
     [
         pytest.param(".template.json", json.dump, id="Successful JSON"),
         pytest.param(".template.yaml", yaml.dump, id="Successful YAML"),
+        pytest.param(".ojdt", yaml.dump, id="Successful YAML with alternate extension"),
     ],
 )
 def test_read_template_success(tempfile_extension: str, doc_serializer: Callable):
@@ -119,6 +120,12 @@ def test_read_template_fileerror(
             'specificationVersion: "jobtemplate-2023-09"\n',
             id="YAML missing field",
         ),
+        pytest.param(
+            # Extensions other than .json are treated as YAML
+            ".template.ojdt",
+            'specificationVersion: "jobtemplate-2023-09"\n',
+            id="YAML missing field",
+        ),
     ],
 )
 def test_read_job_template_parsingerror(tempfile_extension: str, file_contents: str):
@@ -149,6 +156,12 @@ def test_read_job_template_parsingerror(tempfile_extension: str, file_contents: 
         ),
         pytest.param(
             ".template.yaml",
+            'specificationVersion: "environment-2023-09"\n',
+            id="YAML missing field",
+        ),
+        pytest.param(
+            # Extensions other than .json are treated as YAML
+            ".template.ojde",
             'specificationVersion: "environment-2023-09"\n',
             id="YAML missing field",
         ),
@@ -242,15 +255,6 @@ def test_get_job_params_success(mock_param_args: list[str], expected_param_value
             None,
             "is not a file",
             id="Parameter filepath is not a file",
-        ),
-        pytest.param(
-            ["file://some-image.png"],
-            True,
-            True,
-            "some-image.png",
-            None,
-            "is not JSON or YAML",
-            id="Parameter filepath is not JSON/YAML",
         ),
         pytest.param(
             ["file://forbidden-file.json"],
