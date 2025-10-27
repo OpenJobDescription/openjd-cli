@@ -1,3 +1,11 @@
+## 0.7.3 (2025-10-27)
+
+
+### Features
+* Treat job template extensions other than .json as YAML ([`338f4d8`](https://github.com/OpenJobDescription/openjd-cli/commit/338f4d800155d25b8e2f81159f972837884b7c25))
+
+
+
 ## 0.7.2 (2025-10-23)
 
 
