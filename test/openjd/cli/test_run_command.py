@@ -243,130 +243,118 @@ def test_do_run_success(
 
 def test_preserve_option(
     caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
 ) -> None:
     """Test that the 'run' command preserves the session working directory when asked to."""
 
-    files_created: list[Path] = []
-    try:
-        # GIVEN
-        with tempfile.NamedTemporaryFile(
-            mode="w+t", suffix=".template.json", encoding="utf8", delete=False
-        ) as job_template_file:
-            json.dump(
-                {
-                    "name": "TestJob",
-                    "specificationVersion": "jobtemplate-2023-09",
-                    "steps": [
-                        {
-                            "name": "TestStep",
-                            "script": {
-                                "actions": {
-                                    "onRun": {
-                                        "command": "python",
-                                        "args": ["-c", "print('Hello World')"],
-                                    }
+    # GIVEN
+    template_file = tmp_path / "template.json"
+    template_file.write_text(
+        json.dumps(
+            {
+                "name": "TestJob",
+                "specificationVersion": "jobtemplate-2023-09",
+                "steps": [
+                    {
+                        "name": "TestStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "print('Hello World')"],
                                 }
-                            },
-                        }
-                    ],
-                },
-                job_template_file.file,
-            )
-        files_created.append(Path(job_template_file.name))
-
-        args = Namespace(
-            path=Path(job_template_file.name),
-            step="TestStep",
-            timestamp_format=LoggingTimestampFormat.RELATIVE,
-            job_params=[],
-            task_params=None,
-            tasks=None,
-            maximum_tasks=-1,
-            run_dependencies=False,
-            path_mapping_rules=None,
-            environments=[],
-            output="human-readable",
-            verbose=False,
-            preserve=True,
-            extensions="",
+                            }
+                        },
+                    }
+                ],
+            }
         )
+    )
 
-        # WHEN
-        result = do_run(args)
+    args = Namespace(
+        path=template_file,
+        step="TestStep",
+        timestamp_format=LoggingTimestampFormat.RELATIVE,
+        job_params=[],
+        task_params=None,
+        tasks=None,
+        maximum_tasks=-1,
+        run_dependencies=False,
+        path_mapping_rules=None,
+        environments=[],
+        output="human-readable",
+        verbose=False,
+        preserve=True,
+        extensions="",
+    )
 
-        # THEN
-        assert "Working directory preserved at" in result.message
-        # Extract the working directory from the output
-        match = re.search("Working directory preserved at: (.+)", result.message)
-        assert match is not None
-        dir = match[1]
-        assert Path(dir).exists()
-    finally:
-        for f in files_created:
-            f.unlink()
+    # WHEN
+    result = do_run(args)
+
+    # THEN
+    assert "Working directory preserved at" in result.message
+    # Extract the working directory from the output
+    match = re.search("Working directory preserved at: (.+)", result.message)
+    assert match is not None
+    dir = match[1]
+    assert Path(dir).exists()
 
 
 def test_verbose_option(
     caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
 ) -> None:
     """Test that the verbose option has set the log level of the openjd-sessions library to DEBUG."""
 
-    files_created: list[Path] = []
-    try:
-        # GIVEN
-        with tempfile.NamedTemporaryFile(
-            mode="w+t", suffix=".template.json", encoding="utf8", delete=False
-        ) as job_template_file:
-            json.dump(
-                {
-                    "name": "TestJob",
-                    "specificationVersion": "jobtemplate-2023-09",
-                    "steps": [
-                        {
-                            "name": "TestStep",
-                            "script": {
-                                "actions": {
-                                    "onRun": {
-                                        "command": "python",
-                                        "args": ["-c", "print('Hello World')"],
-                                    }
+    # GIVEN
+    template_file = tmp_path / "template.json"
+    template_file.write_text(
+        json.dumps(
+            {
+                "name": "TestJob",
+                "specificationVersion": "jobtemplate-2023-09",
+                "steps": [
+                    {
+                        "name": "TestStep",
+                        "script": {
+                            "actions": {
+                                "onRun": {
+                                    "command": "python",
+                                    "args": ["-c", "print('Hello World')"],
                                 }
-                            },
-                        }
-                    ],
-                },
-                job_template_file.file,
-            )
-        files_created.append(Path(job_template_file.name))
-
-        args = Namespace(
-            path=Path(job_template_file.name),
-            step="TestStep",
-            timestamp_format=LoggingTimestampFormat.RELATIVE,
-            job_params=[],
-            task_params=None,
-            tasks=None,
-            maximum_tasks=-1,
-            run_dependencies=False,
-            path_mapping_rules=None,
-            environments=[],
-            output="human-readable",
-            verbose=True,
-            preserve=False,
-            extensions="",
+                            }
+                        },
+                    }
+                ],
+            }
         )
+    )
 
-        # WHEN
-        do_run(args)
+    args = Namespace(
+        path=template_file,
+        step="TestStep",
+        timestamp_format=LoggingTimestampFormat.RELATIVE,
+        job_params=[],
+        task_params=None,
+        tasks=None,
+        maximum_tasks=-1,
+        run_dependencies=False,
+        path_mapping_rules=None,
+        environments=[],
+        output="human-readable",
+        verbose=True,
+        preserve=False,
+        extensions="",
+    )
 
-        # THEN
-        assert SessionsLogger.isEnabledFor(logging.DEBUG)
+    # WHEN
+    do_run(args)
 
-        # Reset the state to not interfere with other tests.
-        SessionsLogger.setLevel(logging.INFO)
-    finally:
-        for f in files_created:
-            f.unlink()
+    # THEN
+    assert SessionsLogger.isEnabledFor(logging.DEBUG)
+
+    # Reset the state to not interfere with other tests.
+    SessionsLogger.setLevel(logging.INFO)
 
 
 def test_do_run_error():
@@ -473,40 +461,36 @@ def test_do_run_path_mapping_rules(caplog: pytest.LogCaptureFixture):
 
 
 @pytest.mark.usefixtures("capsys")
-def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture):
+def test_do_run_nonexistent_step(capsys: pytest.CaptureFixture, tmp_path: Path):
     """
     Test that invoking the `run` command with an incorrect Step name produces the right output.
     (This doesn't actually raise an error, so we have to test the output by capturing `stdout`.)
     """
-    with tempfile.NamedTemporaryFile(
-        mode="w+t", suffix=".template.json", encoding="utf8", delete=False
-    ) as temp_template:
-        json.dump(MOCK_TEMPLATE, temp_template.file)
+    template_file = tmp_path / "template.json"
+    template_file.write_text(json.dumps(MOCK_TEMPLATE))
 
-        mock_args = Namespace(
-            path=Path(temp_template.name),
-            step="FakeStep",
-            timestamp_format=LoggingTimestampFormat.RELATIVE,
-            job_params=None,
-            task_params=None,
-            tasks=None,
-            maximum_tasks=-1,
-            run_dependencies=False,
-            path_mapping_rules=None,
-            environments=[],
-            output="human-readable",
-            verbose=False,
-            preserve=False,
-            extensions="",
-        )
+    mock_args = Namespace(
+        path=template_file,
+        step="FakeStep",
+        timestamp_format=LoggingTimestampFormat.RELATIVE,
+        job_params=None,
+        task_params=None,
+        tasks=None,
+        maximum_tasks=-1,
+        run_dependencies=False,
+        path_mapping_rules=None,
+        environments=[],
+        output="human-readable",
+        verbose=False,
+        preserve=False,
+        extensions="",
+    )
     with pytest.raises(SystemExit):
         do_run(mock_args)
     assert (
         "No Step with name 'FakeStep' is defined in the given Job Template."
         in capsys.readouterr().out
     )
-
-    Path(temp_template.name).unlink()
 
 
 PARAMETRIZE_CASES = (
@@ -894,3 +878,411 @@ def test_task_param_validation_errors(
         assert (
             expected_error in outerr.out
         ), f"Message r'{expected_error}' was not found in the output:\n{format_capsys_outerr(outerr)}"
+
+
+# Integration tests for context-aware help functionality
+
+
+class TestContextAwareHelp:
+    """Integration tests for the context-aware help feature of the run command."""
+
+    def test_help_with_json_template(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that help displays job-specific information for JSON templates."""
+        # GIVEN
+        template_dir = Path(__file__).parent / "templates"
+        template_path = template_dir / "job_with_test_steps.yaml"
+
+        # WHEN
+        args = ["run", str(template_path), "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Verify job name appears in output
+        assert "Job: my-job" in outerr.out, "Job name should appear in help output"
+
+        # Verify parameter information appears
+        assert (
+            "Job Parameters (-p/--job-param PARAM_NAME=VALUE):" in outerr.out
+        ), "Job parameters section should appear"
+        assert "Message (STRING)" in outerr.out, "Parameter name and type should appear"
+        assert "[default: 'Hello, world!']" in outerr.out, "Parameter default should appear"
+
+    def test_help_with_yaml_template_long_flag(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that help displays job-specific information with --help flag."""
+        # GIVEN
+        template_dir = Path(__file__).parent / "templates"
+        template_path = template_dir / "basic.yaml"
+
+        # WHEN
+        args = ["run", str(template_path), "--help"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Verify job name appears
+        assert "Job: Job" in outerr.out, "Job name should appear in help output"
+
+        # Verify parameter information appears
+        assert (
+            "Job Parameters (-p/--job-param PARAM_NAME=VALUE):" in outerr.out
+        ), "Job parameters section should appear"
+        assert "J (STRING)" in outerr.out, "Parameter J should appear with type"
+        assert "[required]" in outerr.out, "Required parameter should be marked as required"
+
+    def test_help_with_template_with_description(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        """Test that help displays job description when present in template."""
+        # GIVEN - Create a temporary template with description
+        template_file = tmp_path / "test_template.json"
+        template_file.write_text(
+            json.dumps(
+                {
+                    "specificationVersion": "jobtemplate-2023-09",
+                    "name": "TestJob",
+                    "description": "This is a test job with a description",
+                    "steps": [
+                        {
+                            "name": "TestStep",
+                            "script": {
+                                "actions": {
+                                    "onRun": {
+                                        "command": "python",
+                                        "args": ["-c", "print('test')"],
+                                    }
+                                }
+                            },
+                        }
+                    ],
+                }
+            )
+        )
+
+        # WHEN
+        args = ["run", str(template_file), "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        assert "Job: TestJob" in outerr.out, "Job name should appear"
+        assert (
+            "This is a test job with a description" in outerr.out
+        ), "Job description should appear"
+
+    def test_help_with_multiple_parameters(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        """Test that help displays all parameters with various types and constraints."""
+        # GIVEN - Create a template with multiple parameters
+        template_file = tmp_path / "multi_param.json"
+        template_file.write_text(
+            json.dumps(
+                {
+                    "specificationVersion": "jobtemplate-2023-09",
+                    "name": "MultiParamJob",
+                    "parameterDefinitions": [
+                        {
+                            "name": "StringParam",
+                            "type": "STRING",
+                            "default": "hello",
+                            "description": "A string parameter",
+                        },
+                        {
+                            "name": "IntParam",
+                            "type": "INT",
+                            "minValue": 1,
+                            "maxValue": 10,
+                        },
+                        {
+                            "name": "FloatParam",
+                            "type": "FLOAT",
+                            "default": 3.14,
+                        },
+                        {
+                            "name": "PathParam",
+                            "type": "PATH",
+                        },
+                    ],
+                    "steps": [
+                        {
+                            "name": "TestStep",
+                            "script": {
+                                "actions": {
+                                    "onRun": {
+                                        "command": "python",
+                                        "args": ["-c", "print('test')"],
+                                    }
+                                }
+                            },
+                        }
+                    ],
+                }
+            )
+        )
+
+        # WHEN
+        args = ["run", str(template_file), "--help"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Verify all parameters appear with correct types
+        assert "StringParam (STRING)" in outerr.out, "String parameter should appear"
+        assert "[default: 'hello']" in outerr.out, "String default should appear"
+        assert "A string parameter" in outerr.out, "Parameter description should appear"
+
+        assert "IntParam (INT)" in outerr.out, "Int parameter should appear"
+        assert "[required]" in outerr.out, "Required parameter should be marked"
+        assert "range: 1 to 10" in outerr.out, "Int constraints should appear"
+
+        assert "FloatParam (FLOAT)" in outerr.out, "Float parameter should appear"
+        assert "[default: 3.14]" in outerr.out, "Float default should appear"
+
+        assert "PathParam (PATH)" in outerr.out, "Path parameter should appear"
+
+    def test_help_includes_standard_options(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that help includes standard run command options."""
+        # GIVEN
+        template_dir = Path(__file__).parent / "templates"
+        template_path = template_dir / "basic.yaml"
+
+        # WHEN
+        args = ["run", str(template_path), "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Verify standard options section appears
+        assert "Standard Options:" in outerr.out, "Standard options section should appear"
+
+        # Verify some key standard options are present
+        assert "--step" in outerr.out, "--step option should appear"
+        assert "--run-dependencies" in outerr.out, "Run dependencies option should appear"
+        assert (
+            "--environment" in outerr.out or "--env" in outerr.out
+        ), "Environment option should appear"
+
+
+class TestBackwardCompatibility:
+    """Integration tests for backward compatibility of the run command."""
+
+    def test_help_without_template_shows_standard_help(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that 'openjd run --help' without template shows standard help."""
+        # WHEN
+        args = ["run", "--help"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Should show standard help, not job-specific help
+        assert "usage:" in outerr.out.lower(), "Usage line should appear"
+        # Should NOT show job-specific sections
+        assert "Job:" not in outerr.out, "Should not show job-specific information"
+        assert "Job Parameters" not in outerr.out, "Should not show job parameters section"
+
+    def test_normal_job_execution_unaffected(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that normal job execution works without help flag."""
+        # GIVEN
+        template_dir = Path(__file__).parent / "templates"
+        template_path = template_dir / "simple_with_j_param.yaml"
+
+        # WHEN - Run a job normally without help flag
+        args = [
+            "run",
+            str(template_path),
+            "--step",
+            "SimpleStep",
+            "-p",
+            "J=TestValue",
+            "--extensions",
+            "",
+        ]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Job should execute normally
+        assert "DoTask" in outerr.out, "Job should execute normally"
+        # Should NOT show help text
+        assert "Job Parameters" not in outerr.out, "Should not show help during execution"
+
+    def test_existing_run_command_functionality_unchanged(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that existing run command options still work correctly."""
+        # GIVEN
+        template_dir = Path(__file__).parent / "templates"
+        template_path = template_dir / "basic.yaml"
+
+        # WHEN - Use existing options like --step, -p, --run-dependencies
+        args = [
+            "run",
+            str(template_path),
+            "--step",
+            "First",
+            "-p",
+            "J=TestValue",
+            "-tp",
+            "Foo=1",
+            "-tp",
+            "Bar=Bar1",
+            "--extensions",
+            "",
+        ]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+
+        # THEN
+        # Job should execute with specified parameters
+        assert "J=TestValue" in outerr.out, "Job parameter should be used"
+        assert "Foo=1" in outerr.out, "Task parameter should be used"
+        assert "Bar=Bar1" in outerr.out, "Task parameter should be used"
+
+
+class TestHelpErrorScenarios:
+    """Integration tests for error handling in context-aware help."""
+
+    def test_help_with_nonexistent_template(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that help with non-existent template shows error message."""
+        # GIVEN
+        nonexistent_path = "nonexistent_template.json"
+
+        # WHEN
+        args = ["run", nonexistent_path, "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+        # THEN
+        # Should show error message
+        assert "Error:" in outerr.err, "Error message should appear in stderr"
+        # Error should mention the file issue
+        assert (
+            "not found" in outerr.err.lower()
+            or "no such file" in outerr.err.lower()
+            or "does not exist" in outerr.err.lower()
+        ), "Error should indicate file not found"
+
+    def test_help_with_invalid_json_template(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        """Test that help with invalid JSON shows error message."""
+        # GIVEN - Create a file with invalid JSON
+        template_file = tmp_path / "invalid.json"
+        template_file.write_text("{invalid json content")
+
+        # WHEN
+        args = ["run", str(template_file), "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+        # THEN
+        assert "Error:" in outerr.err, "Error message should appear in stderr"
+
+    def test_help_with_invalid_yaml_template(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        """Test that help with invalid YAML shows error message."""
+        # GIVEN - Create a file with invalid YAML
+        template_file = tmp_path / "invalid.yaml"
+        template_file.write_text("invalid: yaml: content: [unclosed")
+
+        # WHEN
+        args = ["run", str(template_file), "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+        # THEN
+        assert "Error:" in outerr.err, "Error message should appear in stderr"
+
+    def test_help_with_schema_validation_failure(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        """Test that help with template that fails schema validation shows error."""
+        # GIVEN - Create a template missing required fields
+        template_file = tmp_path / "invalid_schema.json"
+        template_file.write_text(
+            json.dumps(
+                {
+                    "specificationVersion": "jobtemplate-2023-09",
+                    # Missing required 'name' field
+                    "steps": [],
+                }
+            )
+        )
+
+        # WHEN
+        args = ["run", str(template_file), "-h"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+        # THEN
+        assert "Error:" in outerr.err, "Error message should appear in stderr"
+        assert (
+            "Invalid job template" in outerr.err or "validation" in outerr.err.lower()
+        ), "Error should indicate validation failure"
+
+    def test_help_error_messages_are_user_friendly(self, capsys: pytest.CaptureFixture) -> None:
+        """Test that error messages don't expose internal stack traces."""
+        # GIVEN
+        nonexistent_path = "does_not_exist.json"
+
+        # WHEN
+        args = ["run", nonexistent_path, "--help"]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+        # THEN
+        # Error message should be present but not contain stack trace indicators
+        assert "Error:" in outerr.err, "Error message should appear"
+        # Should not contain Python stack trace elements
+        assert "Traceback" not in outerr.err, "Should not show Python traceback"
+        assert 'File "' not in outerr.err, "Should not show file paths from stack trace"
+
+    def test_missing_parameters_shows_help(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        """Test that when required parameters are missing, help information is displayed."""
+        # GIVEN - Create a template with required parameters
+        template_file = tmp_path / "test_template.json"
+        template_file.write_text(
+            json.dumps(
+                {
+                    "specificationVersion": "jobtemplate-2023-09",
+                    "name": "TestJob",
+                    "description": "A test job with required parameters",
+                    "parameterDefinitions": [
+                        {
+                            "name": "RequiredParam1",
+                            "type": "STRING",
+                            "description": "First required parameter",
+                        },
+                        {
+                            "name": "RequiredParam2",
+                            "type": "INT",
+                            "description": "Second required parameter",
+                        },
+                    ],
+                    "steps": [
+                        {
+                            "name": "TestStep",
+                            "script": {"actions": {"onRun": {"command": "echo"}}},
+                        }
+                    ],
+                }
+            )
+        )
+
+        # WHEN - Run without providing required parameters
+        args = ["run", str(template_file)]
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+        # THEN - Should show error about missing parameters
+        assert (
+            "Values missing for required job parameters" in outerr.out
+        ), "Should show missing parameters error"
+
+        # AND - Should also show help information
+        assert "Job: TestJob" in outerr.out, "Should show job name in help"
+        assert (
+            "A test job with required parameters" in outerr.out
+        ), "Should show job description in help"
+        assert (
+            "Job Parameters (-p/--job-param PARAM_NAME=VALUE):" in outerr.out
+        ), "Should show parameters section header"
+        assert (
+            "RequiredParam1 (STRING) [required]" in outerr.out
+        ), "Should show first required parameter"
+        assert "First required parameter" in outerr.out, "Should show first parameter description"
+        assert (
+            "RequiredParam2 (INT) [required]" in outerr.out
+        ), "Should show second required parameter"
+        assert "Second required parameter" in outerr.out, "Should show second parameter description"
+        assert "Standard Options:" in outerr.out, "Should show standard options section"
