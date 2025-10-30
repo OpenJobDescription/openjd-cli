@@ -415,8 +415,8 @@ def do_run(args: Namespace) -> OpenJDCliResult:
             filename = Path(env).expanduser()
             try:
                 # Raises: RuntimeError, DecodeValidationError
-                template = read_environment_template(filename)
-                environments.append(template)
+                env_template = read_environment_template(filename)
+                environments.append(env_template)
             except (RuntimeError, DecodeValidationError) as e:
                 return OpenJDCliResult(status="error", message=str(e))
 
@@ -504,7 +504,31 @@ def do_run(args: Namespace) -> OpenJDCliResult:
             task_parameter_values = []
 
     except RuntimeError as rte:
-        return OpenJDCliResult(status="error", message=str(rte))
+        error_message = str(rte)
+        # Print the help information along with the error
+        from ._help_formatter import generate_job_template_help
+        from .._common import read_job_template, add_common_arguments, CommonArgument
+
+        try:
+            # Load the template to generate help
+            job_template = read_job_template(args.path, supported_extensions=extensions)
+            # Create a minimal parser for help generation with the same usage format
+            temp_parser = ArgumentParser(
+                prog="openjd run",
+                usage="openjd run JOB_TEMPLATE_PATH [arguments]",
+                add_help=False,
+            )
+            temp_parser.add_argument("path")
+            add_common_arguments(temp_parser, {CommonArgument.PATH, CommonArgument.JOB_PARAMS})
+            add_run_arguments(temp_parser)
+
+            help_text = generate_job_template_help(job_template, temp_parser, args.path)
+            error_message = f"{error_message}\n\n{help_text}"
+        except Exception:
+            # If we can't generate help, just show the original error
+            pass
+
+        return OpenJDCliResult(status="error", message=error_message)
 
     step_list: list[Step] = []
     try:
