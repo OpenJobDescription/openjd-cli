@@ -1,3 +1,11 @@
+## 0.7.4 (2025-11-14)
+
+
+### Features
+* Make `openjd run <template>` help output describe the job parameters ([`ac751c7`](https://github.com/OpenJobDescription/openjd-cli/commit/ac751c7a925812aed3236636513362b3dc377e4f))
+
+
+
 ## 0.7.3 (2025-10-27)
 
 
