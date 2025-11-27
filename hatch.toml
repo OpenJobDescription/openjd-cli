@@ -23,9 +23,6 @@ lint = [
 [[envs.all.matrix]]
 python = ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
-[envs.codebuild.scripts]
-build = "hatch build"
-
 [envs.release]
 detached = true
 
