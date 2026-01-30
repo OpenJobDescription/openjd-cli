@@ -1,0 +1,9 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 PowerShell Syntax Sugar
+extensions:
+  - FEATURE_BUNDLE_1
+steps:
+  - name: PowerShellStep
+    powershell:
+      script: |
+        Write-Host "Hello from PowerShell!"

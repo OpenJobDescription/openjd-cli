@@ -1,0 +1,23 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Amount Min Max
+extensions:
+  - FEATURE_BUNDLE_1
+parameterDefinitions:
+  - name: CpuMin
+    type: INT
+    default: 1
+  - name: CpuMax
+    type: INT
+    default: 4
+steps:
+  - name: TestStep
+    hostRequirements:
+      amounts:
+        - name: amount.worker.vcpu
+          min: "{{Param.CpuMin}}"
+          max: "{{Param.CpuMax}}"
+    script:
+      actions:
+        onRun:
+          command: bash
+          args: ["-c", "echo 'Amount min/max works!'"]

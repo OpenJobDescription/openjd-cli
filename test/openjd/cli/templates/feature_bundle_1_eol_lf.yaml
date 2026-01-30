@@ -1,0 +1,17 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 EndOfLine LF
+extensions:
+  - FEATURE_BUNDLE_1
+steps:
+  - name: EOLStep
+    script:
+      embeddedFiles:
+        - name: TestFile
+          type: TEXT
+          filename: test_eol.txt
+          data: "line1\nline2\nline3"
+          endOfLine: LF
+      actions:
+        onRun:
+          command: bash
+          args: ["-c", "cat '{{Task.File.TestFile}}' | xxd"]

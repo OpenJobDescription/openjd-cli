@@ -1,0 +1,9 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Bash Syntax Sugar
+extensions:
+  - FEATURE_BUNDLE_1
+steps:
+  - name: BashStep
+    bash:
+      script: |
+        echo "Hello from Bash!"

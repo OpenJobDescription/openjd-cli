@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from typing import Optional
 
 # This is the list of Open Job Description extensions with implemented support
-SUPPORTED_EXTENSIONS = ["TASK_CHUNKING", "REDACTED_ENV_VARS"]
+SUPPORTED_EXTENSIONS = ["TASK_CHUNKING", "REDACTED_ENV_VARS", "FEATURE_BUNDLE_1"]
 
 
 def add_extensions_argument(run_parser: ArgumentParser):

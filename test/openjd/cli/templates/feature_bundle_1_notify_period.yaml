@@ -1,0 +1,18 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Notify Period
+extensions:
+  - FEATURE_BUNDLE_1
+parameterDefinitions:
+  - name: NotifyPeriod
+    type: INT
+    default: 2
+steps:
+  - name: TestStep
+    script:
+      actions:
+        onRun:
+          command: bash
+          args: ["-c", "echo 'Notify period works!'"]
+          cancelation:
+            mode: NOTIFY_THEN_TERMINATE
+            notifyPeriodInSeconds: "{{Param.NotifyPeriod}}"
