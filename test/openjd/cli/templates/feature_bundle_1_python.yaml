@@ -1,0 +1,9 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Python Syntax Sugar
+extensions:
+  - FEATURE_BUNDLE_1
+steps:
+  - name: PythonStep
+    python:
+      script: |
+        print("Hello from Python!")

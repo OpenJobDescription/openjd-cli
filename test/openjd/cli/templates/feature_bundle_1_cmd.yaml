@@ -1,0 +1,9 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Cmd Syntax Sugar
+extensions:
+  - FEATURE_BUNDLE_1
+steps:
+  - name: CmdStep
+    cmd:
+      script: |
+        echo Hello from Cmd!

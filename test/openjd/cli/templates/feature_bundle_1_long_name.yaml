@@ -1,0 +1,11 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Extended Step Name
+extensions:
+  - FEATURE_BUNDLE_1
+steps:
+  - name: ThisIsAVeryLongStepNameThatExceedsTheSixtyFourCharacterLimitButIsAllowedWithFeatureBundle1Extension
+    script:
+      actions:
+        onRun:
+          command: bash
+          args: ["-c", "echo 'Long step name works!'"]

@@ -1,0 +1,16 @@
+specificationVersion: jobtemplate-2023-09
+name: FB1 Format String Timeout
+extensions:
+  - FEATURE_BUNDLE_1
+parameterDefinitions:
+  - name: Timeout
+    type: INT
+    default: 5
+steps:
+  - name: TimeoutStep
+    script:
+      actions:
+        onRun:
+          command: bash
+          args: ["-c", "echo Running with timeout {{Param.Timeout}}s; sleep 1"]
+          timeout: "{{Param.Timeout}}"
