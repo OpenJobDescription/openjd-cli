@@ -1,3 +1,13 @@
+## 0.7.5 (2026-02-09)
+
+
+### Features
+* Implement [FEATURE_BUNDLE_1 RFC 0004](https://github.com/OpenJobDescription/openjd-specifications/blob/mainline/rfcs/0004-enhanced-limits-and-capabilities.md), increasing limits
+  for job parameter counts and name lengths, enabling format strings in integer properties, providing control over embedded file line endings, and adding syntax sugar
+  to simplify templates that run simple scripts with common interpreters ([`adfc5a6`](https://github.com/OpenJobDescription/openjd-cli/commit/adfc5a6ba57baed48cc664e4c63e0ad3d9229b0d))
+
+
+
 ## 0.7.4 (2025-11-14)
 
 
