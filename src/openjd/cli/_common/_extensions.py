@@ -10,7 +10,7 @@ SUPPORTED_EXTENSIONS = ["TASK_CHUNKING", "REDACTED_ENV_VARS", "FEATURE_BUNDLE_1"
 def add_extensions_argument(run_parser: ArgumentParser):
     run_parser.add_argument(
         "--extensions",
-        help=f"A comma-separated list of Open Job Description extension names to enable. Defaults to all that are implemented: {','.join(SUPPORTED_EXTENSIONS)}",
+        help=f"A comma-separated list of Open Job Description extension names that the CLI will accept from job templates. Templates declare which extensions they use. Defaults to all that are implemented: {','.join(SUPPORTED_EXTENSIONS)}",
     )
 
 
