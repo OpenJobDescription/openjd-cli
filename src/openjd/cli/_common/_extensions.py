@@ -3,8 +3,17 @@
 from argparse import ArgumentParser
 from typing import Optional
 
-# This is the list of Open Job Description extensions with implemented support
-SUPPORTED_EXTENSIONS = ["TASK_CHUNKING", "REDACTED_ENV_VARS", "FEATURE_BUNDLE_1"]
+# This is the list of Open Job Description extensions with implemented support.
+# EXPR (RFCs 0005/0006) and WRAP_ACTIONS (RFC 0008) are added so the CLI can run
+# templates that declare them. WRAP_ACTIONS implies EXPR; the model library
+# handles that implication when it parses the template.
+SUPPORTED_EXTENSIONS = [
+    "TASK_CHUNKING",
+    "REDACTED_ENV_VARS",
+    "FEATURE_BUNDLE_1",
+    "EXPR",
+    "WRAP_ACTIONS",
+]
 
 
 def add_extensions_argument(run_parser: ArgumentParser):

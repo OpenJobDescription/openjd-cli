@@ -1,6 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-from typing import Any
+from typing import Any, Optional
 from pathlib import Path
 
 from openjd.model import (
@@ -70,15 +70,29 @@ def read_job_template(template_file: Path, *, supported_extensions: list[str]) -
     return template
 
 
-def read_environment_template(template_file: Path) -> EnvironmentTemplate:
+def read_environment_template(
+    template_file: Path,
+    *,
+    supported_extensions: Optional[list[str]] = None,
+) -> EnvironmentTemplate:
     """Open a JSON or YAML-formatted file and attempt to parse it into an EnvironmentTemplate object.
     Raises a RuntimeError if the file doesn't exist or can't be opened, and raises a
     DecodeValidationError if its contents can't be parsed into a valid EnvironmentTemplate.
+
+    Environment templates may declare extensions just like job templates do
+    (e.g. ``WRAP_ACTIONS`` for RFC 0008's wrap hooks). Pass the CLI's allow-list
+    via ``supported_extensions`` so the model accepts those declarations;
+    omitting the argument preserves the legacy behavior of accepting only the
+    default model surface.
     """
     # Raises RuntimeError
     template_object = read_template(template_file)
 
+    decode_kwargs: dict[str, list[str]] = {}
+    if supported_extensions is not None:
+        decode_kwargs["supported_extensions"] = supported_extensions
+
     # Raises: DecodeValidationError
-    template = decode_environment_template(template=template_object)
+    template = decode_environment_template(template=template_object, **decode_kwargs)
 
     return template
