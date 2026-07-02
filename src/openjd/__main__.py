@@ -2,5 +2,4 @@
 
 from .cli._create_argparser import main
 
-
 main()
