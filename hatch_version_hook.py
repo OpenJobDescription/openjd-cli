@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 from typing import Any, Optional
 
-
 _logger = logging.Logger(__name__, logging.INFO)
 _stdout_handler = logging.StreamHandler(sys.stdout)
 _stdout_handler.addFilter(lambda record: record.levelno <= logging.INFO)

@@ -23,7 +23,6 @@ from openjd.cli._run._run_command import (
 from openjd.cli._run._local_session._session_manager import LoggingTimestampFormat
 from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat
 
-
 PARAMETRIZE_CASES: tuple = (
     pytest.param(
         "basic.yaml",
