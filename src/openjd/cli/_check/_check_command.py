@@ -41,7 +41,10 @@ def do_check(args: Namespace) -> OpenJDCliResult:
         if TemplateSpecificationVersion.is_job_template(template_version):
             decode_job_template(template=template_object, supported_extensions=extensions)
         elif TemplateSpecificationVersion.is_environment_template(template_version):
-            decode_environment_template(template=template_object)
+            # Pass `extensions` so env templates can declare e.g.
+            # WRAP_ACTIONS (RFC 0008) — without this the model rejects
+            # the extension declaration even though the CLI accepts it.
+            decode_environment_template(template=template_object, supported_extensions=extensions)
         else:
             return OpenJDCliResult(
                 status="error",

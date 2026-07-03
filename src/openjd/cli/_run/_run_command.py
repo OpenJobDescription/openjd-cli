@@ -415,7 +415,11 @@ def do_run(args: Namespace) -> OpenJDCliResult:
             filename = Path(env).expanduser()
             try:
                 # Raises: RuntimeError, DecodeValidationError
-                env_template = read_environment_template(filename)
+                # Pass `extensions` so env templates can declare e.g.
+                # WRAP_ACTIONS (RFC 0008) — without this they're parsed
+                # against the default model surface and reject the
+                # extension declaration.
+                env_template = read_environment_template(filename, supported_extensions=extensions)
                 environments.append(env_template)
             except (RuntimeError, DecodeValidationError) as e:
                 return OpenJDCliResult(status="error", message=str(e))
