@@ -1,6 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 from enum import Enum
+from typing import Optional
 
 from openjd.model import Step, TaskParameterSet
 from openjd.model.v2023_09 import Environment
@@ -47,7 +48,11 @@ class RunTaskAction(SessionAction):
 
     def run(self):
         self._session.run_task(
-            step_script=self._step.script, task_parameter_values=self._parameters
+            step_script=self._step.script,
+            task_parameter_values=self._parameters,
+            # RFC 0008: the step name feeds the WrappedStep.Name template
+            # variable inside an active onWrapTaskRun hook.
+            step_name=self._step.name,
         )
 
     def __str__(self):
@@ -58,14 +63,40 @@ class RunTaskAction(SessionAction):
 class EnterEnvironmentAction(SessionAction):
     _environment: Environment
     _id: str
+    _extra_let_bindings: Optional[list[str]]
 
-    def __init__(self, session: Session, environment: Environment, env_id: str):
+    def __init__(
+        self,
+        session: Session,
+        environment: Environment,
+        env_id: str,
+        extra_let_bindings: Optional[list[str]] = None,
+    ):
         super(EnterEnvironmentAction, self).__init__(session)
         self._environment = environment
         self._id = env_id
+        # RFC 0007: a step's environments are entered with the step-level
+        # `let` bindings so their variables/actions can reference them.
+        self._extra_let_bindings = extra_let_bindings
 
     def run(self):
-        self._session.enter_environment(environment=self._environment, identifier=self._id)
+        # Backwards compatibility: only forward `extra_let_bindings` when the
+        # step actually defines `let` bindings (RFC 0007). Older
+        # openjd-sessions releases don't accept the keyword, so omitting it
+        # by default keeps this CLI working with any sessions version for
+        # every template that doesn't use step-level lets — the reasonable
+        # default is simply "no extra bindings".
+        if self._extra_let_bindings:
+            self._session.enter_environment(
+                environment=self._environment,
+                identifier=self._id,
+                extra_let_bindings=self._extra_let_bindings,
+            )
+        else:
+            self._session.enter_environment(
+                environment=self._environment,
+                identifier=self._id,
+            )
 
     def __str__(self):
         return f"Enter Environment '{self._environment.name}'"

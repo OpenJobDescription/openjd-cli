@@ -147,6 +147,8 @@ class LocalSession:
         self._openjd_session = Session(
             session_id=self.session_id,
             job_parameter_values=job_parameter_values,
+            # RFC 0007 §7.3.1 (EXPR): seeds the Job.Name template variable.
+            job_name=str(job.name),
             path_mapping_rules=self._path_mapping_rules,
             callback=self._action_callback,
             retain_working_dir=retain_working_dir,
@@ -242,7 +244,13 @@ class LocalSession:
         LOG.info("Interruption signal recieved.")
         self.cancel()
 
-    def run_environment_enters(self, environments: Optional[list[Any]], type: EnvironmentType):
+    def run_environment_enters(
+        self,
+        environments: Optional[list[Any]],
+        type: EnvironmentType,
+        *,
+        extra_let_bindings: Optional[list[str]] = None,
+    ):
         """Enter one or more environments in the session."""
         if environments is None:
             return
@@ -256,7 +264,12 @@ class LocalSession:
             env_id = f"{type.name} - {env.name}"
             self._action_ended.clear()
             self._current_action = EnterEnvironmentAction(
-                session=self._openjd_session, environment=env, env_id=env_id
+                session=self._openjd_session,
+                environment=env,
+                env_id=env_id,
+                # RFC 0007: a step's environments see the step-level `let`
+                # bindings.
+                extra_let_bindings=extra_let_bindings,
             )
             self._environments_entered.append((type, env_id))
             self._current_action.run()
@@ -394,8 +407,20 @@ class LocalSession:
         if task_parameters is None:
             task_parameters = StepParameterSpaceIterator(space=step.parameterSpace)
 
-        # Enter all the step environments
-        self.run_environment_enters(step.stepEnvironments, EnvironmentType.STEP)
+        # Enter all the step environments. When the step defines step-level
+        # `let` bindings (RFC 0007), its environments are entered with them so
+        # their variables and actions can reference them. The keyword is only
+        # passed when bindings exist, keeping the call (and the sessions API
+        # it reaches) identical to the pre-RFC 0007 behavior by default.
+        step_let_bindings = getattr(step, "let", None)
+        if step_let_bindings:
+            self.run_environment_enters(
+                step.stepEnvironments,
+                EnvironmentType.STEP,
+                extra_let_bindings=step_let_bindings,
+            )
+        else:
+            self.run_environment_enters(step.stepEnvironments, EnvironmentType.STEP)
 
         try:
             # Run the tasks

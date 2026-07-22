@@ -547,9 +547,17 @@ def do_run(args: Namespace) -> OpenJDCliResult:
         return OpenJDCliResult(status="error", message=str(rte))
 
     # Create a RevisionExtensions object with the default specification version and enabled extensions
-    # We use the default v2023_09 since that's what we're currently supporting
+    # We use the default v2023_09 since that's what we're currently supporting.
+    # Extension behaviors activate only when declared by the templates being
+    # run (the job template and any external environment templates) — the
+    # CLI's --extensions list is what the CLI *accepts*, not what is enabled.
+    declared_extensions: list[str] = list(the_job.extensions or [])
+    for env_template in environments or []:
+        for ext_name in env_template.extensions or []:
+            if ext_name not in declared_extensions:
+                declared_extensions.append(ext_name)
     revision_extensions = RevisionExtensions(
-        spec_rev=the_job.revision, supported_extensions=extensions
+        spec_rev=the_job.revision, supported_extensions=declared_extensions
     )
 
     return _run_local_session(
