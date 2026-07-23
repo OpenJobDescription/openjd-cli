@@ -7,6 +7,7 @@ import signal
 from . import SampleSteps, SESSION_PARAMETERS
 from openjd.model import StepParameterSpaceIterator
 from openjd.sessions import Session, SessionState
+from openjd.cli._run._local_session._actions import _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME
 from openjd.cli._run._local_session._session_manager import (
     LocalSession,
     EnvironmentType,
@@ -168,7 +169,13 @@ def test_localsession_run_success(
         assert patched_run_environment_enters.call_args_list == [
             call(session, None, EnvironmentType.EXTERNAL),
             call(session, sample_job.jobEnvironments, EnvironmentType.JOB),
-            call(session, sample_job.steps[step_index].stepEnvironments, EnvironmentType.STEP),
+            call(
+                session,
+                sample_job.steps[step_index].stepEnvironments,
+                EnvironmentType.STEP,
+                extra_let_bindings=None,
+                step_name=sample_job.steps[step_index].name,
+            ),
         ]
         # It should have run one step
         assert patched_run_step.call_args_list == [
@@ -191,6 +198,115 @@ def test_localsession_run_success(
             "Open Job Description CLI: All actions completed successfully!"
             in capsys.readouterr().out
         )
+
+
+@pytest.mark.usefixtures("sample_job_and_dirs")
+def test_localsession_step_env_enter_receives_step_name(
+    sample_job_and_dirs: tuple,
+    patched_actions,
+):
+    """
+    RFC 0007 §7.3.1 (EXPR): a step-environment enter passes the owning step's
+    name to Session.enter_environment (when the installed openjd-sessions
+    accepts the keyword), while job/external environment enters never do.
+    """
+    sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
+    patched_enter = patched_actions[0]
+
+    with LocalSession(
+        job=sample_job, job_parameter_values=sample_job_parameters, session_id="step-name"
+    ) as session:
+        session.run_step(sample_job.steps[SampleSteps.NormalStep])
+
+    assert not session.failed
+
+    step_env_calls = [
+        c
+        for c in patched_enter.call_args_list
+        if c.kwargs["identifier"].startswith(f"{EnvironmentType.STEP.name} - ")
+    ]
+    other_env_calls = [
+        c
+        for c in patched_enter.call_args_list
+        if not c.kwargs["identifier"].startswith(f"{EnvironmentType.STEP.name} - ")
+    ]
+
+    assert step_env_calls
+    for enter_call in step_env_calls:
+        if _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME:
+            assert enter_call.kwargs["step_name"] == sample_job.steps[SampleSteps.NormalStep].name
+        else:
+            # Older openjd-sessions releases don't accept the keyword; the
+            # version-skew guard must omit it.
+            assert "step_name" not in enter_call.kwargs
+
+    # Job/external environment enters never carry a step name.
+    assert other_env_calls
+    for enter_call in other_env_calls:
+        assert "step_name" not in enter_call.kwargs
+
+
+@pytest.mark.usefixtures("sample_job_and_dirs", "capsys")
+def test_localsession_enter_environment_post_registration_raise(
+    sample_job_and_dirs: tuple, capsys: pytest.CaptureFixture, patched_actions
+):
+    """
+    A raise out of Session.enter_environment *after* the session registered
+    the environment (e.g. an environment `variables` expression that fails to
+    evaluate) must leave the environment in the CLI's entered list so cleanup
+    exits it. Popping it would desynchronize CLI and session state: the
+    environment's onExit would be skipped and cleanup would trip the session's
+    LIFO exit check ("Must exit Environment X first"), masking the original
+    error.
+    """
+    sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
+    patched_enter = patched_actions[0]
+
+    # The autouse fixture set the mock's side_effect to the real (pre-patch)
+    # Session.enter_environment; capture it before redirecting the mock.
+    real_enter = patched_enter.side_effect
+    error_text = "Failed to evaluate the environment's variables"
+
+    def register_then_raise(session, *, environment, identifier=None, **kwargs):
+        if identifier is not None and identifier.startswith(f"{EnvironmentType.STEP.name} - "):
+            # Mirror the state Session.enter_environment leaves behind when an
+            # environment `variables` expression fails to evaluate: the
+            # environment is registered in the session's entered list, but the
+            # enter raises before any action runs.
+            session._environments[identifier] = environment
+            session._environments_entered.append(identifier)
+            raise ValueError(error_text)
+        return real_enter(session, environment=environment, identifier=identifier, **kwargs)
+
+    step_env_id = f"{EnvironmentType.STEP.name} - env1"
+    job_env_id = f"{EnvironmentType.JOB.name} - rootEnv"
+
+    # Redirect the autouse fixture's Session.enter_environment mock from the
+    # real method to the registering-then-raising simulation.
+    patched_enter.side_effect = register_then_raise
+    with LocalSession(
+        job=sample_job, job_parameter_values=sample_job_parameters, session_id="post-reg"
+    ) as session:
+        with pytest.raises(LocalSessionFailed):
+            session.run_step(sample_job.steps[SampleSteps.NormalStep])
+
+        # The session registered the environment, so the CLI must keep it
+        # in its own entered list for cleanup to exit.
+        assert step_env_id in session._openjd_session.environments_entered
+        assert (EnvironmentType.STEP, step_env_id) in session._environments_entered
+
+    # Cleanup exited the registered step environment and then the job
+    # environment, in LIFO order, rather than skipping the step environment.
+    exited_ids = [
+        exit_call.kwargs["identifier"]
+        for exit_call in session._openjd_session.exit_environment.call_args_list  # type: ignore
+    ]
+    assert exited_ids == [step_env_id, job_env_id]
+
+    assert session.failed
+    output = capsys.readouterr().out
+    assert error_text in output
+    assert "Must exit Environment" not in output
 
 
 @pytest.mark.usefixtures("sample_job_and_dirs", "capsys")
@@ -221,6 +337,8 @@ def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.Capt
                 session,
                 sample_job.steps[SampleSteps.BadCommand].stepEnvironments,
                 EnvironmentType.STEP,
+                extra_let_bindings=None,
+                step_name=sample_job.steps[SampleSteps.BadCommand].name,
             ),
         ]
         session._openjd_session.exit_environment.assert_called_once()  # type: ignore

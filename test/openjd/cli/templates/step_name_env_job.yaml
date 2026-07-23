@@ -1,0 +1,27 @@
+# RFC 0007 §7.3.1 (EXPR): Step.Name is available to a step's environments.
+# The step-level `let` binding references Step.Name, and the step's
+# environment is entered with the binding so its onEnter action can echo it.
+specificationVersion: jobtemplate-2023-09
+extensions:
+- EXPR
+name: StepNameEnvJob
+steps:
+- name: EchoStepName
+  let:
+  - bound_name = Step.Name
+  stepEnvironments:
+  - name: NameEcho
+    script:
+      actions:
+        onEnter:
+          command: python
+          args:
+          - -c
+          - print('EnvSaw={{ bound_name }}')
+  script:
+    actions:
+      onRun:
+        command: python
+        args:
+        - -c
+        - print('TaskRan')
