@@ -11,7 +11,7 @@ import logging
 import shlex
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from . import MOCK_TEMPLATE, SampleSteps, run_openjd_cli_main, format_capsys_outerr
 
@@ -20,8 +20,9 @@ from openjd.cli._run._run_command import (
     _process_task_params,
     _process_tasks,
 )
+from openjd.cli._run._local_session._actions import _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME
 from openjd.cli._run._local_session._session_manager import LoggingTimestampFormat
-from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat
+from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat, Session
 
 PARAMETRIZE_CASES: tuple = (
     pytest.param(
@@ -640,6 +641,61 @@ def test_run_local_session_failed(
     assert re.search(
         expected_error_regex, outerr.out, re.MULTILINE
     ), f"Regex r'{expected_error_regex}' does not match the output:\n{format_capsys_outerr(outerr)}"
+
+
+def test_run_local_session_enter_environment_raises(capsys: pytest.CaptureFixture):
+    """
+    Test that an exception raised out of Session.enter_environment (e.g. the
+    RFC 0008 "at most one wrap environment" RuntimeError, or a ValueError from
+    the extra `let` bindings) produces a clean error result instead of a raw
+    traceback propagating out of the CLI.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    args = [
+        "run",
+        str(template_dir / "job_with_test_steps.yaml"),
+        "--step",
+        SampleSteps.NormalStep.name,
+        "--extensions",
+        "",
+    ]
+
+    error_text = (
+        "RFC 0008: a session may have at most one Environment defining wrap hooks "
+        "(onWrapEnvEnter / onWrapTaskRun / onWrapEnvExit)."
+    )
+    with patch.object(Session, "enter_environment", side_effect=RuntimeError(error_text)):
+        outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+    assert re.search(
+        "Session ended with errors", outerr.out, re.MULTILINE
+    ), f"Expected a clean error result in the output:\n{format_capsys_outerr(outerr)}"
+    assert error_text in outerr.out
+    assert "Traceback" not in outerr.out + outerr.err
+
+
+@pytest.mark.skipif(
+    not _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME,
+    reason="Installed openjd-sessions does not accept step_name on enter_environment",
+)
+def test_do_run_step_name_in_step_environment(capsys: pytest.CaptureFixture) -> None:
+    """
+    RFC 0007 §7.3.1 (EXPR) parity with openjd-rs: a step-level `let` binding
+    may reference Step.Name, and the step's environments are entered with the
+    binding so their actions can echo it.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    args = [
+        "run",
+        str(template_dir / "step_name_env_job.yaml"),
+        "--step",
+        "EchoStepName",
+    ]
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+    assert (
+        "EnvSaw=EchoStepName" in outerr.out
+    ), f"Step.Name did not resolve in the step environment:\n{format_capsys_outerr(outerr)}"
+    assert "TaskRan" in outerr.out
 
 
 class TestProcessTaskParams:

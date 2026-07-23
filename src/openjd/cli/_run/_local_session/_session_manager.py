@@ -250,6 +250,7 @@ class LocalSession:
         type: EnvironmentType,
         *,
         extra_let_bindings: Optional[list[str]] = None,
+        step_name: Optional[str] = None,
     ):
         """Enter one or more environments in the session."""
         if environments is None:
@@ -270,9 +271,37 @@ class LocalSession:
                 # RFC 0007: a step's environments see the step-level `let`
                 # bindings.
                 extra_let_bindings=extra_let_bindings,
+                # RFC 0007 §7.3.1 (EXPR): a step's environments see Step.Name.
+                # Only step-environment enters carry a step name.
+                step_name=step_name,
             )
             self._environments_entered.append((type, env_id))
-            self._current_action.run()
+            try:
+                self._current_action.run()
+            except (RuntimeError, ValueError) as exc:
+                # Session.enter_environment raises (rather than reporting
+                # through the action-status callback) when it rejects the
+                # environment up front — e.g. the RFC 0008 "at most one wrap
+                # environment" RuntimeError, or a ValueError from the extra
+                # `let` bindings — but it can also raise *after* registering
+                # the environment (e.g. an environment `variables` expression
+                # that fails to evaluate). Only when the session did NOT
+                # register the environment may we drop it from our entered
+                # list (cleanup must not try to exit it). If the session did
+                # register it, it must stay in our list so cleanup exits it —
+                # popping it here would skip its onExit and desynchronize us
+                # from the session's LIFO exit ordering check, masking the
+                # original error with "Must exit Environment X first".
+                if env_id not in self._openjd_session.environments_entered:
+                    self._environments_entered.pop()
+                LOG.info(
+                    msg=f"Open Job Description CLI: ERROR entering environment '{env.name}': {exc}",
+                    extra={"session_id": self.session_id},
+                )
+                self.failed = True
+                self._failed_action = self._current_action
+                self._current_action = None
+                raise LocalSessionFailed(self._failed_action) from exc
             self._action_ended.wait()
             if self.failed:
                 self._failed_action = self._current_action
@@ -409,18 +438,20 @@ class LocalSession:
 
         # Enter all the step environments. When the step defines step-level
         # `let` bindings (RFC 0007), its environments are entered with them so
-        # their variables and actions can reference them. The keyword is only
-        # passed when bindings exist, keeping the call (and the sessions API
-        # it reaches) identical to the pre-RFC 0007 behavior by default.
+        # their variables and actions can reference them.
+        # getattr guard: requires an openjd-model with Step.let on the
+        # instantiated Job (openjd-model PR #318+); collapse to plain
+        # `step.let` once the version pin floor guarantees it.
         step_let_bindings = getattr(step, "let", None)
-        if step_let_bindings:
-            self.run_environment_enters(
-                step.stepEnvironments,
-                EnvironmentType.STEP,
-                extra_let_bindings=step_let_bindings,
-            )
-        else:
-            self.run_environment_enters(step.stepEnvironments, EnvironmentType.STEP)
+        self.run_environment_enters(
+            step.stepEnvironments,
+            EnvironmentType.STEP,
+            extra_let_bindings=step_let_bindings or None,
+            # RFC 0007 §7.3.1 (EXPR): Step.Name is available to a step's
+            # environments (openjd-rs threads the step's resolved symbol
+            # table into enter_environment; this is the CLI counterpart).
+            step_name=step.name,
+        )
 
         try:
             # Run the tasks

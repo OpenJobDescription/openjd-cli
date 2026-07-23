@@ -338,6 +338,7 @@ def _run_local_session(
     Creates a Session object and listens for log messages to synchronously end the session.
     """
 
+    error_message = "Session ended with errors; see Task logs for details"
     try:
         start_seconds = time.perf_counter()
 
@@ -367,6 +368,14 @@ def _run_local_session(
     except LocalSessionFailed:
         duration = time.perf_counter() - start_seconds
         session = None
+    except (RuntimeError, ValueError) as exc:
+        # Exceptions raised by openjd.sessions from within session actions
+        # (e.g. the RFC 0008 "at most one wrap environment" RuntimeError)
+        # rather than reported through the action-status callback. Report
+        # them as a clean error result instead of a raw traceback.
+        duration = time.perf_counter() - start_seconds
+        session = None
+        error_message = f"Session ended with errors: {exc}"
 
     preserved_message: str = ""
     if retain_working_dir and session is not None:
@@ -377,7 +386,7 @@ def _run_local_session(
     if session is None or session.failed:
         return OpenJDRunResult(
             status="error",
-            message="Session ended with errors; see Task logs for details" + preserved_message,
+            message=error_message + preserved_message,
             job_name=job.name,
             step_name=step_name,
             duration=duration,
