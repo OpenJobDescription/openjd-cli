@@ -20,7 +20,6 @@ from openjd.cli._run._run_command import (
     _process_task_params,
     _process_tasks,
 )
-from openjd.cli._run._local_session._actions import _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME
 from openjd.cli._run._local_session._session_manager import LoggingTimestampFormat
 from openjd.sessions import LOG as SessionsLogger, PathMappingRule, PathFormat, Session
 
@@ -674,15 +673,17 @@ def test_run_local_session_enter_environment_raises(capsys: pytest.CaptureFixtur
     assert "Traceback" not in outerr.out + outerr.err
 
 
-@pytest.mark.skipif(
-    not _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME,
-    reason="Installed openjd-sessions does not accept step_name on enter_environment",
-)
 def test_do_run_step_name_in_step_environment(capsys: pytest.CaptureFixture) -> None:
     """
     RFC 0007 §7.3.1 (EXPR) parity with openjd-rs: a step-level `let` binding
     may reference Step.Name, and the step's environments are entered with the
     binding so their actions can echo it.
+
+    This is the end-to-end proof of the feature. It used to be `skipif`-gated on
+    feature-detecting the `step_name` keyword, which meant it did not run at all
+    against a sessions build that lacked it -- so the only test that actually
+    exercised Step.Name in a step environment was silently skipped. The
+    `openjd-sessions >= 0.10.11` floor guarantees the keyword, so it always runs.
     """
     template_dir = Path(__file__).parent / "templates"
     args = [

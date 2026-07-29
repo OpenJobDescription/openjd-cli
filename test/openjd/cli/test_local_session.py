@@ -7,7 +7,6 @@ import signal
 from . import SampleSteps, SESSION_PARAMETERS
 from openjd.model import StepParameterSpaceIterator
 from openjd.sessions import Session, SessionState
-from openjd.cli._run._local_session._actions import _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME
 from openjd.cli._run._local_session._session_manager import (
     LocalSession,
     EnvironmentType,
@@ -207,8 +206,14 @@ def test_localsession_step_env_enter_receives_step_name(
 ):
     """
     RFC 0007 §7.3.1 (EXPR): a step-environment enter passes the owning step's
-    name to Session.enter_environment (when the installed openjd-sessions
-    accepts the keyword), while job/external environment enters never do.
+    name to Session.enter_environment, while job/external environment enters
+    never do.
+
+    The step-environment assertion used to be gated on feature-detecting the
+    keyword, which meant that against a sessions build without it the test took
+    the other branch and asserted the keyword was *absent* -- passing while
+    proving the opposite of its name. The `openjd-sessions >= 0.10.11` floor
+    guarantees the keyword, so the assertion is now unconditional.
     """
     sample_job, sample_job_parameters, template_dir, current_working_dir = sample_job_and_dirs
     patched_enter = patched_actions[0]
@@ -233,12 +238,7 @@ def test_localsession_step_env_enter_receives_step_name(
 
     assert step_env_calls
     for enter_call in step_env_calls:
-        if _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME:
-            assert enter_call.kwargs["step_name"] == sample_job.steps[SampleSteps.NormalStep].name
-        else:
-            # Older openjd-sessions releases don't accept the keyword; the
-            # version-skew guard must omit it.
-            assert "step_name" not in enter_call.kwargs
+        assert enter_call.kwargs["step_name"] == sample_job.steps[SampleSteps.NormalStep].name
 
     # Job/external environment enters never carry a step name.
     assert other_env_calls
