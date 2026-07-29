@@ -1,21 +1,11 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-import inspect
 from enum import Enum
 from typing import Any, Optional
 
 from openjd.model import Step, TaskParameterSet
 from openjd.model.v2023_09 import Environment
 from openjd.sessions import Session
-
-# Version-skew guard: the step_name keyword was added to
-# Session.enter_environment alongside RFC 0007 Step.Name support. Detect it
-# once so this CLI keeps working against older openjd-sessions releases that
-# don't accept the keyword (every step-environment enter carries a step name,
-# so a value-presence check alone isn't enough here).
-_ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME: bool = (
-    "step_name" in inspect.signature(Session.enter_environment).parameters
-)
 
 
 class EnvironmentType(str, Enum):
@@ -97,20 +87,16 @@ class EnterEnvironmentAction(SessionAction):
         self._step_name = step_name
 
     def run(self):
-        # Backwards compatibility: only forward `extra_let_bindings` when the
-        # step actually defines `let` bindings (RFC 0007). Older
-        # openjd-sessions releases don't accept the keyword, so omitting it
-        # by default keeps this CLI working with any sessions version for
-        # every template that doesn't use step-level lets — the reasonable
-        # default is simply "no extra bindings". `step_name` follows the same
-        # pattern, but since every step-environment enter has a step name, it
-        # is additionally gated on the installed openjd-sessions accepting
-        # the keyword; without it, Step.Name simply stays undefined (the
-        # pre-RFC 0007 behavior).
+        # Both keywords are guaranteed by this package's `openjd-sessions`
+        # floor (>= 0.10.11), so neither is feature-detected. They are still
+        # only forwarded when they carry something: a step with no `let`
+        # bindings means "no extra bindings", and job/external environment
+        # enters have no owning step, so `Step.Name` must stay undefined for
+        # them rather than being seeded with None.
         optional_kwargs: dict[str, Any] = {}
         if self._extra_let_bindings:
             optional_kwargs["extra_let_bindings"] = self._extra_let_bindings
-        if self._step_name is not None and _ENTER_ENVIRONMENT_ACCEPTS_STEP_NAME:
+        if self._step_name is not None:
             optional_kwargs["step_name"] = self._step_name
         self._session.enter_environment(
             environment=self._environment,
