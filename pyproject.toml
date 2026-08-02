@@ -29,9 +29,11 @@ classifiers = [
   "Intended Audience :: End Users/Desktop"
 ]
 dependencies = [
-  # 0.10.11 is the first release with `step_name` on both Session.run_task and
-  # Session.enter_environment (RFC 0007/0008). Below it, run_task() raises
-  # TypeError on every task run, since this CLI passes the keyword unconditionally.
+  # 0.10.11 is the first release carrying all three keywords this CLI now passes
+  # (RFC 0007/0008): `job_name` on Session, and `step_name` on both
+  # Session.run_task and Session.enter_environment (which also gained
+  # `extra_let_bindings`). Below this floor Session() raises TypeError at
+  # construction, before any task runs, since `job_name` is passed unconditionally.
   "openjd-sessions >= 0.10.11,< 0.11",
   "openjd-model >= 0.9,< 0.12"
 ]

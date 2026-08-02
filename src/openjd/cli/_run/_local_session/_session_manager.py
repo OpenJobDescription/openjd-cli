@@ -281,14 +281,21 @@ class LocalSession:
             except (RuntimeError, ValueError) as exc:
                 # Session.enter_environment raises (rather than reporting
                 # through the action-status callback) when it rejects the
-                # environment up front — e.g. the RFC 0008 "at most one wrap
-                # environment" RuntimeError, or a ValueError from the extra
-                # `let` bindings — but it can also raise *after* registering
-                # the environment (e.g. an environment `variables` expression
-                # that fails to evaluate). Only when the session did NOT
-                # register the environment may we drop it from our entered
-                # list (cleanup must not try to exit it). If the session did
-                # register it, it must stay in our list so cleanup exits it —
+                # environment up front, before registering it — the RFC 0008
+                # "at most one Environment defining wrap hooks" RuntimeError is
+                # the trigger that reaches us in practice. Every failure it
+                # detects *after* registering goes through
+                # _fail_action_before_start() and returns normally instead, so
+                # as of openjd-sessions 0.10.11 nothing raises post-registration
+                # and the else-branch below is defensive. It is kept because the
+                # cost of being wrong is asymmetric: if a future release does
+                # raise after registering, dropping the environment from our
+                # list would skip its onExit and desynchronize us from the
+                # session's LIFO exit-ordering check, masking the original error
+                # with "Must exit Environment X first". So: only when the session
+                # did NOT register the environment may we drop it from our
+                # entered list (cleanup must not try to exit it). If the session
+                # did register it, it must stay in our list so cleanup exits it —
                 # popping it here would skip its onExit and desynchronize us
                 # from the session's LIFO exit ordering check, masking the
                 # original error with "Must exit Environment X first".

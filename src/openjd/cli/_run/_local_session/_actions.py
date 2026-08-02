@@ -93,6 +93,17 @@ class EnterEnvironmentAction(SessionAction):
         # bindings means "no extra bindings", and job/external environment
         # enters have no owning step, so `Step.Name` must stay undefined for
         # them rather than being seeded with None.
+        #
+        # Passing None explicitly would be equivalent today, since
+        # enter_environment itself skips a None `step_name` and a falsy
+        # `extra_let_bindings`. Omitting them keeps this call site's intent
+        # ("this enter has no owning step") legible at the boundary rather
+        # than relying on the callee's None-handling, and it is what
+        # test_localsession_step_env_enter_receives_step_name asserts — that
+        # assertion is currently the only check that job and external enters
+        # do not seed Step.Name, because a template referencing Step.Name
+        # outside a step is rejected by static validation before any session
+        # is built, so no loadable template can observe it.
         optional_kwargs: dict[str, Any] = {}
         if self._extra_let_bindings:
             optional_kwargs["extra_let_bindings"] = self._extra_let_bindings
