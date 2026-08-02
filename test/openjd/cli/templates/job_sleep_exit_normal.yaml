@@ -12,9 +12,21 @@
                                 "args": [
                                     "-c",
                                     # Obfuscate "EXIT_NORMAL" so it doesn't appear in the log when Windows prints the command that's run to the log.
-                                    "import time,sys; print('SLEEP'); sys.stdout.flush(); time.sleep(5); print(chr(69)+'XIT_NORMAL')",
+                                    "import time,sys; print('SLEEP'); sys.stdout.flush(); time.sleep(60); print(chr(69)+'XIT_NORMAL')",
                                 ],
-                                "timeout": 2,
+                                # The margins are deliberately wide, in both
+                                # directions, because this test asserts on a
+                                # race: SLEEP must be printed *before* the
+                                # timeout fires, and EXIT_NORMAL must not be.
+                                # A 2s timeout left under 2s for interpreter
+                                # startup, which a loaded parallel test run
+                                # can exceed -- the action was then killed
+                                # before printing SLEEP and the test failed
+                                # intermittently. 5s of startup headroom, and
+                                # a sleep an order of magnitude longer than
+                                # the timeout, make both directions robust
+                                # without changing what is verified.
+                                "timeout": 5,
                             }
                         }
                     },
