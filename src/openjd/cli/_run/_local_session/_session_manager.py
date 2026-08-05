@@ -8,6 +8,7 @@ from types import FrameType, TracebackType
 from signal import signal, SIGINT, SIGTERM, SIG_DFL
 from itertools import islice
 from datetime import datetime, timedelta, timezone
+from math import isfinite
 
 from ._actions import (
     EnterEnvironmentAction,
@@ -47,6 +48,50 @@ class LocalSessionFailed(RuntimeError):
     def __init__(self, failed_action: SessionAction):
         self.failed_action = failed_action
         super().__init__(f"Action failed: {failed_action}")
+
+
+def _calculate_adaptive_chunk_size(
+    *,
+    current_chunk_size: int,
+    completed_task_count: int,
+    completed_task_duration: float,
+    target_runtime_seconds: float,
+) -> Optional[int]:
+    """The adaptive-chunking size estimate, or ``None`` to defer adjusting.
+
+    Implements steps 3-7 of the adaptive chunking algorithm in the Open Job
+    Description CLI specification (``specs/cli/run.md`` in openjd-rs): if the
+    cumulative duration is zero or non-finite, keep the current chunk size and
+    wait for a measurable sample.
+
+    Deferring matters because a zero ``duration_per_task`` makes the ideal size
+    unrepresentable. The two implementations fail differently without this
+    guard: the Rust CLI produces ``inf``, which saturates to a huge chunk size,
+    while Python raises ``ZeroDivisionError`` out of the run. Neither is
+    reachable through a normal ``openjd run`` today -- ``run_task`` always
+    spawns and waits on a real subprocess, so a measured chunk duration of
+    exactly ``0.0`` would need that round trip to complete inside one
+    ``perf_counter`` tick (~42 ns here) -- so this is spec conformance and
+    hardening rather than a fix for an observed failure.
+
+    Extracted as a module-level function, mirroring openjd-rs's
+    ``calculate_adaptive_chunk_size``, so the deferral is unit-testable without
+    needing to provoke an unreachable timing condition end to end.
+    """
+    if (
+        completed_task_count <= 0
+        or completed_task_duration <= 0.0
+        or not isfinite(completed_task_duration)
+    ):
+        return None
+
+    duration_per_task = completed_task_duration / completed_task_count
+    adaptive_chunk_size = target_runtime_seconds / duration_per_task
+    if completed_task_count < 10 and adaptive_chunk_size > current_chunk_size:
+        # When we have data about only a few tasks, gradually blend in the new
+        # estimate instead of cutting over immediately.
+        adaptive_chunk_size = 0.75 * current_chunk_size + 0.25 * adaptive_chunk_size
+    return max(int(adaptive_chunk_size), 1)
 
 
 class LocalSession:
@@ -300,27 +345,28 @@ class LocalSession:
             # Estimate a chunk size based on the statistics, and update the iterator. Note that this
             # logic is very simple, providing a good starting point that behaves reasonably for other implementations
             # to follow.
-            duration_per_task = completed_task_duration / completed_task_count
-            adaptive_chunk_size = target_runtime_seconds / duration_per_task
+            new_chunk_size = _calculate_adaptive_chunk_size(
+                current_chunk_size=task_parameters.chunks_default_task_count,  # type: ignore
+                completed_task_count=completed_task_count,
+                completed_task_duration=completed_task_duration,
+                target_runtime_seconds=target_runtime_seconds,
+            )
+            # `None` means there is no measurable sample yet: keep the current chunk
+            # size and wait for one. Deliberately not `continue` -- the maximum-task
+            # countdown below must still run for this completed chunk.
             if (
-                completed_task_count < 10
-                and adaptive_chunk_size > task_parameters.chunks_default_task_count  # type: ignore
+                new_chunk_size is not None
+                and new_chunk_size != task_parameters.chunks_default_task_count
             ):
-                # When we have data about only a few tasks, gradually blend in the new estimate instead of cutting over immediately
-                adaptive_chunk_size = (
-                    0.75 * task_parameters.chunks_default_task_count + 0.25 * adaptive_chunk_size  # type: ignore
-                )
-            adaptive_chunk_size = max(int(adaptive_chunk_size), 1)
-            if adaptive_chunk_size != task_parameters.chunks_default_task_count:
                 LOG.info(
                     msg=f"Open Job Description CLI: Ran {completed_task_count} tasks in {timedelta(seconds=completed_task_duration)}, average {timedelta(seconds=completed_task_duration / completed_task_count)}",
                     extra={"session_id": self.session_id},
                 )
                 LOG.info(
-                    msg=f"Open Job Description CLI: Adjusting chunk size from {task_parameters.chunks_default_task_count} to {adaptive_chunk_size}",
+                    msg=f"Open Job Description CLI: Adjusting chunk size from {task_parameters.chunks_default_task_count} to {new_chunk_size}",
                     extra={"session_id": self.session_id},
                 )
-                task_parameters.chunks_default_task_count = adaptive_chunk_size
+                task_parameters.chunks_default_task_count = new_chunk_size
 
             # If a maximum task count was specified, count them down
             if maximum_tasks and maximum_tasks > 0:
