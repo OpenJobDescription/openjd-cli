@@ -1,3 +1,22 @@
+## 0.7.6 (2026-08-11)
+
+
+### Features
+* RFC 0007/0008 support — step-level let bindings, wrap-hook step names, and template-declared
+  extensions. A step's environments are entered with its step-level EXPR let bindings (RFC 0007),
+  so environment variables and actions can reference them; RFC 0008 wrap hooks now resolve
+  `WrappedStep.Name`; only the extensions a template declares are enabled; and `Job.Name` is
+  seeded into the symbol table. ([`962e359`](https://github.com/OpenJobDescription/openjd-cli/commit/962e359b8c2aea7a3b818f6103a3fe6bb84177c4))
+* Support RFC extensions in environment templates (#213) ([`cc8d354`](https://github.com/OpenJobDescription/openjd-cli/commit/cc8d3543c31e74d23897995127d3075bf314782d))
+
+### Bug Fixes
+* Require `openjd-sessions >= 0.10.11` ([`dfa118d`](https://github.com/OpenJobDescription/openjd-cli/commit/dfa118de0f7a49dee568e4c74f90d42faf6f8dd7))
+* `openjd run` printed a stack trace instead of a readable error message when an environment failed to enter (e.g. violating RFC 0008's "at most one wrap environment" rule)
+* `openjd run` reported a misleading "Must exit Environment X first" error when an environment failed partway through entering (e.g. a bad environment `variables` expression)
+* `Step.Name` was not available in a step's `let` bindings and step-environment actions (RFC 0007 EXPR)
+* Defer adaptive chunk adjustment without a measurable sample (#232) ([`7091007`](https://github.com/OpenJobDescription/openjd-cli/commit/7091007439699ba51549e36e94873bf689eb7bd9))
+
+
 ## 0.7.5 (2026-02-09)
 
 
