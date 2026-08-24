@@ -32,7 +32,7 @@ dependencies = [
   # 0.10.11 is the first release with `step_name` on both Session.run_task and
   # Session.enter_environment (RFC 0007/0008). Below it, run_task() raises
   # TypeError on every task run, since this CLI passes the keyword unconditionally.
-  "openjd-sessions >= 0.10.11,< 0.11",
+  "openjd-sessions >= 0.10.11,< 0.12",
   "openjd-model >= 0.9,< 0.12"
 ]
 
