@@ -313,7 +313,7 @@ class LocalSession:
                 # the trigger that reaches us in practice. Every failure it
                 # detects *after* registering goes through
                 # _fail_action_before_start() and returns normally instead, so
-                # as of openjd-sessions 0.10.11 nothing raises post-registration
+                # as of openjd-sessions 0.12.0 nothing raises post-registration
                 # and the else-branch below is defensive. It is kept because the
                 # cost of being wrong is asymmetric: if a future release does
                 # raise after registering, dropping the environment from our

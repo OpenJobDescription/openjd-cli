@@ -676,14 +676,21 @@ def test_run_local_session_enter_environment_raises(capsys: pytest.CaptureFixtur
 def test_do_run_step_name_in_step_environment(capsys: pytest.CaptureFixture) -> None:
     """
     RFC 0007 §7.3.1 (EXPR) parity with openjd-rs: a step-level `let` binding
-    may reference Step.Name, and the step's environments are entered with the
-    binding so their actions can echo it.
+    may reference Step.Name, and the resolved value reaches the step's
+    environments.
 
-    This is the end-to-end proof of the feature. It used to be `skipif`-gated on
-    feature-detecting the `step_name` keyword, which meant it did not run at all
-    against a sessions build that lacked it -- so the only test that actually
-    exercised Step.Name in a step environment was silently skipped. The
-    `openjd-sessions >= 0.10.11` floor guarantees the keyword, so it always runs.
+    Same shape as test_do_run_job_name_in_step_let_binding: this pins the
+    create-time forward path -- openjd-model resolves `bound_name = Step.Name`
+    at job creation, the value travels in `step_symbol_tables`, the CLI hands
+    that table to the step-environment enter, and the onEnter action echoes it.
+
+    Scope: it does NOT pin the CLI's `step_name` keyword on that enter. The
+    binding is step-*level*, so it is already a literal in the resolved table;
+    dropping `step_name=step_name` leaves this test passing (measured). That
+    keyword is pinned by test_localsession_step_env_enter_receives_step_name.
+    It also used to be `skipif`-gated on feature-detecting the keyword, so it
+    did not run at all against a sessions build that lacked it; the declared
+    openjd-sessions floor guarantees the keyword, so it always runs.
     """
     template_dir = Path(__file__).parent / "templates"
     args = [
@@ -701,11 +708,19 @@ def test_do_run_step_name_in_step_environment(capsys: pytest.CaptureFixture) -> 
 
 def test_do_run_job_name_in_step_let_binding(capsys: pytest.CaptureFixture) -> None:
     """
-    RFC 0007 §7.3.1 (EXPR): Job.Name is seeded into the session symbol table,
-    so a step-level `let` binding may reference it and the step's environments
-    resolve the binding. The assertion is on the value, so neither omitting
-    `job_name` from the Session (Job.Name undefined, the binding fails) nor
-    passing an empty one satisfies it.
+    RFC 0007 §7.3.1 (EXPR): a step-level `let` binding may reference Job.Name,
+    and the resolved value reaches the step's environments.
+
+    What this pins is the create-time forward path, end to end: openjd-model
+    resolves `bound_job_name = Job.Name` at job creation, the value travels in
+    `step_symbol_tables`, the CLI hands that table to the step-environment
+    enter, and the onEnter action echoes it. The assertion is on the value, so
+    any break in that chain fails here.
+
+    Scope: because the binding is step-*level*, it is resolved before a Session
+    exists and is already a literal in the resolved table. Deleting
+    `job_name=str(job.name)` from the Session construction therefore leaves this
+    test passing (measured), so it does NOT pin the Session's Job.Name seeding.
     """
     template_dir = Path(__file__).parent / "templates"
     args = [
