@@ -1,0 +1,39 @@
+specificationVersion: "jobtemplate-2023-09"
+extensions:
+  - EXPR
+name: StepLetSymtabJob
+parameterDefinitions:
+  - name: Region
+    type: STRING
+    default: us-west-2
+jobEnvironments:
+  # Present so the "job environments get no step table" assertion has a call to
+  # inspect. Without it that assertion is vacuous.
+  - name: JobEnv
+    script:
+      actions:
+        onEnter:
+          command: python
+          args: ["-c", "print('JobEnvEntered')"]
+steps:
+  - name: EchoStepLet
+    let:
+      # Template-scope `let`: resolved once at job creation. Its resolved value
+      # reaches a session only through the step's symbol table, so every
+      # assertion below fails outright if the CLI forwards nothing.
+      - bucket = "assets-" + Param.Region
+    stepEnvironments:
+      - name: StepLetEnv
+        script:
+          actions:
+            onEnter:
+              command: python
+              args: ["-c", "print('EnterSawStepLet={{ bucket }}')"]
+            onExit:
+              command: python
+              args: ["-c", "print('ExitSawStepLet={{ bucket }}')"]
+    script:
+      actions:
+        onRun:
+          command: python
+          args: ["-c", "print('TaskSawStepLet={{ bucket }}')"]

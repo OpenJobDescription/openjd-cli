@@ -4,7 +4,7 @@ from argparse import ArgumentParser, Namespace, _SubParsersAction
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 import json
 import yaml
 import os
@@ -22,6 +22,10 @@ from ._validation_utils import (
     read_environment_template,
 )
 from openjd.model import DecodeValidationError, Job, JobParameterValues, EnvironmentTemplate
+
+if TYPE_CHECKING:
+    # Annotations only; see the note in _job_from_template.py.
+    from openjd.expr import SerializedSymbolTable
 
 __all__ = [
     "add_extensions_argument",
@@ -118,7 +122,10 @@ def generate_job(
     environments: list[EnvironmentTemplate] = [],
     *,
     supported_extensions: list[str],
-) -> tuple[Job, JobParameterValues]:
+) -> tuple[Job, JobParameterValues, dict[str, "SerializedSymbolTable"]]:
+    """Returns the job, its parameter values, and the per-step resolved symbol
+    tables keyed by step name. See :func:`job_from_template` for why the tables
+    must be carried alongside the job rather than discarded."""
     try:
         # Raises: RuntimeError, DecodeValidationError
         template = read_job_template(args.path, supported_extensions=supported_extensions)

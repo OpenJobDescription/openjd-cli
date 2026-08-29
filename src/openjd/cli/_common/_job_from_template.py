@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
 import yaml
 
 from ._validation_utils import get_doc_type
@@ -15,9 +15,16 @@ from openjd.model import (
     Job,
     JobParameterValues,
     JobTemplate,
-    create_job,
+    create_job_with_symbol_tables,
     preprocess_job_parameters,
 )
+
+if TYPE_CHECKING:
+    # Only for annotations: `openjd.expr` is a facade over the native
+    # extension, and importing the CLI must not load it. The tables the model
+    # hands back are already instances of this type, so nothing here
+    # constructs one.
+    from openjd.expr import SerializedSymbolTable
 
 
 def get_params_from_file(parameter_string: str) -> Union[dict, list]:
@@ -111,10 +118,18 @@ def job_from_template(
     parameter_args: list[str] | None,
     job_template_dir: Path,
     current_working_dir: Path,
-) -> tuple[Job, JobParameterValues]:
+) -> tuple[Job, JobParameterValues, dict[str, "SerializedSymbolTable"]]:
     """
     Given a decoded Job Template and a user-input parameter dictionary,
-    generates a Job object and the parameter values for running the job.
+    generates a Job object, the parameter values for running the job, and the
+    per-step resolved symbol tables, keyed by step name.
+
+    A step's template-scope `let` bindings (RFC 0005 §3.6) are evaluated once
+    here, at job creation, and their resolved values reach a session only
+    through those tables -- neither the model nor the session re-derives them
+    from the source expressions. Sessions for a step must therefore be given
+    `step_symbol_tables[step.name]`, or the step's `let` produces no bindings
+    at all.
 
     Raises: RuntimeError if parameters are an unsupported type or don't correspond to the template
     """
@@ -132,11 +147,14 @@ def job_from_template(
         raise RuntimeError(str(ve))
 
     try:
-        job = create_job(
+        # `create_job_with_symbol_tables` returns the same Job that
+        # `create_job` does; it additionally returns the symbol tables that
+        # instantiation built instead of discarding them.
+        created = create_job_with_symbol_tables(
             job_template=template,
             job_parameter_values=parameter_values,
             environment_templates=environments,
         )
-        return (job, parameter_values)
+        return (created.job, parameter_values, created.step_symbol_tables)
     except DecodeValidationError as dve:
         raise RuntimeError(f"Could not generate Job from template and parameters: {str(dve)}")

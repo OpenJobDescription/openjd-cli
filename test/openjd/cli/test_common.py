@@ -370,7 +370,7 @@ def test_job_from_template_success(
     template_dir, current_working_dir = template_dir_and_cwd
     template = decode_job_template(template=template_dict)
 
-    result, _ = job_from_template(template, [], mock_params, template_dir, current_working_dir)
+    result, _, _ = job_from_template(template, [], mock_params, template_dir, current_working_dir)
     assert result.name == expected_job_name
     assert [step.model_dump(exclude_none=True) for step in result.steps] == [
         step.model_dump(exclude_none=True) for step in template.steps

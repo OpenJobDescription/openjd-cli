@@ -172,7 +172,7 @@ def test_localsession_run_success(
                 session,
                 sample_job.steps[step_index].stepEnvironments,
                 EnvironmentType.STEP,
-                extra_let_bindings=None,
+                resolved_symtab=None,
                 step_name=sample_job.steps[step_index].name,
             ),
         ]
@@ -337,7 +337,7 @@ def test_localsession_run_failed(sample_job_and_dirs: tuple, capsys: pytest.Capt
                 session,
                 sample_job.steps[SampleSteps.BadCommand].stepEnvironments,
                 EnvironmentType.STEP,
-                extra_let_bindings=None,
+                resolved_symtab=None,
                 step_name=sample_job.steps[SampleSteps.BadCommand].name,
             ),
         ]

@@ -29,13 +29,18 @@ classifiers = [
   "Intended Audience :: End Users/Desktop"
 ]
 dependencies = [
-  # 0.10.11 is the first release carrying all three keywords this CLI now passes
-  # (RFC 0007/0008): `job_name` on Session, and `step_name` on both
-  # Session.run_task and Session.enter_environment (which also gained
-  # `extra_let_bindings`). Below this floor Session() raises TypeError at
-  # construction, before any task runs, since `job_name` is passed unconditionally.
-  "openjd-sessions >= 0.10.11,< 0.11",
-  "openjd-model >= 0.9,< 0.12"
+  # 0.12.0 is the first release carrying `resolved_symtab` on all three of
+  # Session.enter_environment, Session.exit_environment and Session.run_task.
+  # It is also the release that removed `extra_let_bindings` from
+  # enter_environment: 0.10.11 through 0.11.0 have that keyword and no
+  # `resolved_symtab`, so there is no version satisfying both channels and the
+  # floor has to move rather than being feature-detected. Below 0.12.0 every
+  # call site here raises TypeError on the unexpected `resolved_symtab`.
+  "openjd-sessions >= 0.12.0,< 0.13",
+  # 0.11.4 is the first release exporting `create_job_with_symbol_tables` and
+  # `JobWithSymbolTables`. 0.11.3 and below have `create_job` only, so the
+  # step-scope resolved symbol tables cannot be obtained at all.
+  "openjd-model >= 0.11.4,< 0.12"
 ]
 
 [project.urls]
