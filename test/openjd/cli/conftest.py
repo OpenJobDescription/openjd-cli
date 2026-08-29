@@ -31,7 +31,7 @@ def sample_job_and_dirs(request):
         # `job_from_template` also returns the per-step resolved symbol tables;
         # this fixture's consumers construct LocalSessions without them, so it
         # keeps yielding the (job, parameters, dirs...) shape. Tests that need
-        # the tables use the `sample_job_with_symtabs` fixture below.
+        # the tables use the `step_let_job` fixture in test_step_symbol_tables.py.
         job, parameters, _ = job_from_template(
             template=template,
             environments=[],
