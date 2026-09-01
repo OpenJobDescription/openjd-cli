@@ -4,7 +4,7 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from pathlib import Path
 import json
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 import re
 import logging
 import time
@@ -39,6 +39,10 @@ from openjd.model import (
     TaskParameterSet,
 )
 from openjd.sessions import PathMappingRule, LOG
+
+if TYPE_CHECKING:
+    # Annotations only; see the note in _local_session/_actions.py.
+    from openjd.expr import SerializedSymbolTable
 
 
 @dataclass
@@ -321,6 +325,7 @@ def _run_local_session(
     *,
     job: Job,
     job_parameter_values: JobParameterValues,
+    step_symbol_tables: Optional[dict[str, "SerializedSymbolTable"]] = None,
     step_list: list[Step],
     selected_step: Optional[Step],
     timestamp_format: LoggingTimestampFormat,
@@ -346,6 +351,9 @@ def _run_local_session(
         with LocalSession(
             job=job,
             job_parameter_values=job_parameter_values,
+            # RFC 0005 §3.6: each step's create-time resolved `let` values. The
+            # only channel they have into the session.
+            step_symbol_tables=step_symbol_tables,
             timestamp_format=timestamp_format,
             session_id="CLI-session",
             path_mapping_rules=path_mapping_rules,
@@ -464,7 +472,7 @@ def do_run(args: Namespace) -> OpenJDCliResult:
 
     try:
         # Raises: RuntimeError
-        the_job, job_parameter_values = generate_job(
+        the_job, job_parameter_values, step_symbol_tables = generate_job(
             args, environments, supported_extensions=extensions
         )
 
@@ -572,6 +580,7 @@ def do_run(args: Namespace) -> OpenJDCliResult:
     return _run_local_session(
         job=the_job,
         job_parameter_values=job_parameter_values,
+        step_symbol_tables=step_symbol_tables,
         step_list=step_list,
         selected_step=selected_step,
         task_parameter_values=task_parameter_values,

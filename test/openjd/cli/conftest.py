@@ -28,14 +28,20 @@ def sample_job_and_dirs(request):
         os.makedirs(current_working_dir)
 
         template = decode_job_template(template=MOCK_TEMPLATE)
+        # `job_from_template` also returns the per-step resolved symbol tables;
+        # this fixture's consumers construct LocalSessions without them, so it
+        # keeps yielding the (job, parameters, dirs...) shape. Tests that need
+        # the tables use the `step_let_job` fixture in test_step_symbol_tables.py.
+        job, parameters, _ = job_from_template(
+            template=template,
+            environments=[],
+            parameter_args=request.param,
+            job_template_dir=template_dir,
+            current_working_dir=current_working_dir,
+        )
         yield (
-            *job_from_template(
-                template=template,
-                environments=[],
-                parameter_args=request.param,
-                job_template_dir=template_dir,
-                current_working_dir=current_working_dir,
-            ),
+            job,
+            parameters,
             template_dir,
             current_working_dir,
         )

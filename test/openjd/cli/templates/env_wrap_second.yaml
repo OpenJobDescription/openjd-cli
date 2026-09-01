@@ -1,0 +1,17 @@
+specificationVersion: environment-2023-09
+extensions:
+  - EXPR
+  - WRAP_ACTIONS
+environment:
+  name: WrapSecond
+  script:
+    actions:
+      onWrapEnvEnter:
+        command: python
+        args: ["-c", "print('WrapSecondEnvEnter')"]
+      onWrapTaskRun:
+        command: python
+        args: ["-c", "print('WrapSecondTaskRun')"]
+      onWrapEnvExit:
+        command: python
+        args: ["-c", "print('WrapSecondEnvExit')"]

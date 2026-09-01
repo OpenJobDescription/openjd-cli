@@ -45,7 +45,7 @@ class TestFeatureBundle1:
         """Test that format string timeout is resolved."""
         template = TEMPLATES_DIR / "feature_bundle_1_timeout.yaml"
         outerr = run_openjd_cli_main(capsys, args=["run", str(template)], expected_exit_code=0)
-        assert "Running with timeout 5s" in outerr.out
+        assert "Running with timeout 20s" in outerr.out
 
     def test_format_string_amount_minmax(self, capsys) -> None:
         """Test that format string min/max in AmountRequirement is resolved."""

@@ -676,14 +676,21 @@ def test_run_local_session_enter_environment_raises(capsys: pytest.CaptureFixtur
 def test_do_run_step_name_in_step_environment(capsys: pytest.CaptureFixture) -> None:
     """
     RFC 0007 §7.3.1 (EXPR) parity with openjd-rs: a step-level `let` binding
-    may reference Step.Name, and the step's environments are entered with the
-    binding so their actions can echo it.
+    may reference Step.Name, and the resolved value reaches the step's
+    environments.
 
-    This is the end-to-end proof of the feature. It used to be `skipif`-gated on
-    feature-detecting the `step_name` keyword, which meant it did not run at all
-    against a sessions build that lacked it -- so the only test that actually
-    exercised Step.Name in a step environment was silently skipped. The
-    `openjd-sessions >= 0.10.11` floor guarantees the keyword, so it always runs.
+    Same shape as test_do_run_job_name_in_step_let_binding: this pins the
+    create-time forward path -- openjd-model resolves `bound_name = Step.Name`
+    at job creation, the value travels in `step_symbol_tables`, the CLI hands
+    that table to the step-environment enter, and the onEnter action echoes it.
+
+    Scope: it does NOT pin the CLI's `step_name` keyword on that enter. The
+    binding is step-*level*, so it is already a literal in the resolved table;
+    dropping `step_name=step_name` leaves this test passing (measured). That
+    keyword is pinned by test_localsession_step_env_enter_receives_step_name.
+    It also used to be `skipif`-gated on feature-detecting the keyword, so it
+    did not run at all against a sessions build that lacked it; the declared
+    openjd-sessions floor guarantees the keyword, so it always runs.
     """
     template_dir = Path(__file__).parent / "templates"
     args = [
@@ -697,6 +704,120 @@ def test_do_run_step_name_in_step_environment(capsys: pytest.CaptureFixture) -> 
         "EnvSaw=EchoStepName" in outerr.out
     ), f"Step.Name did not resolve in the step environment:\n{format_capsys_outerr(outerr)}"
     assert "TaskRan" in outerr.out
+
+
+def test_do_run_job_name_in_step_let_binding(capsys: pytest.CaptureFixture) -> None:
+    """
+    RFC 0007 §7.3.1 (EXPR): a step-level `let` binding may reference Job.Name,
+    and the resolved value reaches the step's environments.
+
+    What this pins is the create-time forward path, end to end: openjd-model
+    resolves `bound_job_name = Job.Name` at job creation, the value travels in
+    `step_symbol_tables`, the CLI hands that table to the step-environment
+    enter, and the onEnter action echoes it. The assertion is on the value, so
+    any break in that chain fails here.
+
+    Scope: because the binding is step-*level*, it is resolved before a Session
+    exists and is already a literal in the resolved table. Deleting
+    `job_name=str(job.name)` from the Session construction therefore leaves this
+    test passing (measured), so it does NOT pin the Session's Job.Name seeding.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    args = [
+        "run",
+        str(template_dir / "job_name_expr_job.yaml"),
+        "--step",
+        "EchoJobName",
+    ]
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+    assert (
+        "EnvSawJobName=JobNameExprJob" in outerr.out
+    ), f"Job.Name did not resolve to the job's name:\n{format_capsys_outerr(outerr)}"
+    assert "TaskRan" in outerr.out
+
+
+def test_do_run_wrapped_step_name_is_the_running_step(capsys: pytest.CaptureFixture) -> None:
+    """
+    RFC 0008: the step name the CLI passes to Session.run_task feeds
+    WrappedStep.Name inside an active onWrapTaskRun hook. The hook echoes it,
+    so the assertion pins the resolved *value* against the step's real name --
+    a constant or otherwise wrong step name fails here.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    args = [
+        "run",
+        str(template_dir / "wrapped_step_name_job.yaml"),
+        "--environment",
+        str(template_dir / "env_wrap_echoes_step_name.yaml"),
+    ]
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=0)
+    assert (
+        "WrappedStepName=WrappedTaskStep" in outerr.out
+    ), f"WrappedStep.Name did not resolve to the running step's name:\n{format_capsys_outerr(outerr)}"
+    # The hook runs *instead of* the wrapped onRun.
+    assert "TaskRanUnwrapped" not in outerr.out
+
+
+def test_do_run_step_name_undefined_outside_a_step(capsys: pytest.CaptureFixture) -> None:
+    """
+    Step.Name exists only within a step's own scope: a job environment that
+    references it is rejected outright, with the model naming Job.Name as the
+    symbol that *is* in scope there.
+
+    Scope of what this pins: the rejection is openjd-model *static* validation
+    at template-read time, so it fires before a Session is ever constructed.
+    That makes it a genuine end-to-end guarantee that Step.Name cannot be used
+    outside a step -- but it does NOT pin the CLI's own decision to leave
+    `step_name` off job/external environment enters, because the template never
+    reaches that code. The same rejection applies to every environment-template
+    location (onEnter, onExit, and RFC 0008 wrap hooks), so no loadable template
+    can observe whether the CLI seeded Step.Name there. That decision is pinned
+    only by test_localsession_step_env_enter_receives_step_name.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    args = [
+        "run",
+        str(template_dir / "job_env_refs_step_name.yaml"),
+    ]
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+    assert (
+        "Variable Step.Name does not exist at this location" in outerr.out
+    ), f"Expected Step.Name to be out of scope for a job environment:\n{format_capsys_outerr(outerr)}"
+    assert "JobEnvSawStepName=" not in outerr.out
+
+
+def test_do_run_enter_failure_before_registration_surfaces_real_error(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """
+    Two external environment templates both defining wrap hooks make
+    Session.enter_environment reject the second one up front, per RFC 0008,
+    *before* the session registers it. The CLI must drop that environment from
+    its own entered list so cleanup does not try to exit it -- otherwise the
+    session's "Cannot exit unknown Environment" RuntimeError escapes cleanup
+    and replaces the real error in the result.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    args = [
+        "run",
+        str(template_dir / "wrapped_step_name_job.yaml"),
+        "--environment",
+        str(template_dir / "env_wrap_echoes_step_name.yaml"),
+        "--environment",
+        str(template_dir / "env_wrap_second.yaml"),
+    ]
+    outerr = run_openjd_cli_main(capsys, args=args, expected_exit_code=1)
+
+    assert (
+        "at most one Environment defining wrap hooks" in outerr.out
+    ), f"The RFC 0008 rejection is not the surfaced error:\n{format_capsys_outerr(outerr)}"
+    assert (
+        "Cannot exit unknown Environment" not in outerr.out
+    ), f"Cleanup tried to exit the unregistered environment:\n{format_capsys_outerr(outerr)}"
+    # The unregistered environment is never exited, so the result keeps the
+    # default message rather than one built from a cleanup-time RuntimeError.
+    assert "Session ended with errors; see Task logs for details" in outerr.out
+    assert "WrapSecondEnvExit" not in outerr.out
 
 
 class TestProcessTaskParams:

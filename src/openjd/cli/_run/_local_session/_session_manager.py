@@ -3,7 +3,7 @@
 from queue import Queue
 from threading import Event
 import time
-from typing import Any, Iterable, Optional, Type
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Type
 from types import FrameType, TracebackType
 from signal import signal, SIGINT, SIGTERM, SIG_DFL
 from itertools import islice
@@ -38,6 +38,10 @@ from openjd.sessions import (
     SessionState,
     PathMappingRule,
 )
+
+if TYPE_CHECKING:
+    # Annotations only; see the note in _actions.py.
+    from openjd.expr import SerializedSymbolTable
 
 
 class LocalSessionFailed(RuntimeError):
@@ -118,6 +122,8 @@ class LocalSession:
     _path_mapping_rules: Optional[list[PathMappingRule]]
     _environments: Optional[list[Any]]
     _environments_entered: list[tuple[EnvironmentType, str]]
+    _step_symbol_tables: dict[str, "SerializedSymbolTable"]
+    _entered_env_symtabs: dict[str, "SerializedSymbolTable"]
     _log_handler: LocalSessionLogHandler
     _cleanup_called: bool
 
@@ -127,6 +133,7 @@ class LocalSession:
         job: Job,
         job_parameter_values: JobParameterValues,
         session_id: str,
+        step_symbol_tables: Optional[dict[str, "SerializedSymbolTable"]] = None,
         timestamp_format: LoggingTimestampFormat = LoggingTimestampFormat.RELATIVE,
         path_mapping_rules: Optional[list[PathMappingRule]] = None,
         environments: Optional[list[Any]] = None,
@@ -142,6 +149,21 @@ class LocalSession:
         self._timestamp_format = timestamp_format
         self._path_mapping_rules = path_mapping_rules
         self._environments = environments
+        # The create-time resolved symbol tables from
+        # `create_job_with_symbol_tables`, keyed by step name. A step's
+        # template-scope `let` (RFC 0005 §3.6) is evaluated once at job
+        # creation, and this is the only channel its resolved values have into
+        # a session: the model does not fold them into `script.let` and the
+        # session does not re-evaluate the source expressions. A caller that
+        # omits them gets a session in which every step-level `let` is simply
+        # undefined.
+        self._step_symbol_tables = step_symbol_tables or {}
+        # The table each entered environment was entered with, keyed by
+        # environment identifier, so its exit can be given the same one --
+        # `Session.exit_environment` documents that as the way an onExit
+        # resolves in the same scope as its onEnter. Environments entered
+        # without a table are simply absent.
+        self._entered_env_symtabs = {}
 
         # Create an OpenJD Session
         self._openjd_session = Session(
@@ -249,7 +271,7 @@ class LocalSession:
         environments: Optional[list[Any]],
         type: EnvironmentType,
         *,
-        extra_let_bindings: Optional[list[str]] = None,
+        resolved_symtab: Optional["SerializedSymbolTable"] = None,
         step_name: Optional[str] = None,
     ):
         """Enter one or more environments in the session."""
@@ -268,27 +290,39 @@ class LocalSession:
                 session=self._openjd_session,
                 environment=env,
                 env_id=env_id,
-                # RFC 0007: a step's environments see the step-level `let`
-                # bindings.
-                extra_let_bindings=extra_let_bindings,
+                # RFC 0005 §3.6: a step's environments see the step's resolved
+                # template-scope `let` values through its symbol table.
+                resolved_symtab=resolved_symtab,
                 # RFC 0007 §7.3.1 (EXPR): a step's environments see Step.Name.
                 # Only step-environment enters carry a step name.
                 step_name=step_name,
             )
             self._environments_entered.append((type, env_id))
+            # Recorded before the enter runs, and deliberately not undone on
+            # failure: whether the enter succeeds or not, the exit that follows
+            # must be given the table the enter was attempted with.
+            if resolved_symtab is not None:
+                self._entered_env_symtabs[env_id] = resolved_symtab
             try:
                 self._current_action.run()
             except (RuntimeError, ValueError) as exc:
                 # Session.enter_environment raises (rather than reporting
                 # through the action-status callback) when it rejects the
-                # environment up front — e.g. the RFC 0008 "at most one wrap
-                # environment" RuntimeError, or a ValueError from the extra
-                # `let` bindings — but it can also raise *after* registering
-                # the environment (e.g. an environment `variables` expression
-                # that fails to evaluate). Only when the session did NOT
-                # register the environment may we drop it from our entered
-                # list (cleanup must not try to exit it). If the session did
-                # register it, it must stay in our list so cleanup exits it —
+                # environment up front, before registering it — the RFC 0008
+                # "at most one Environment defining wrap hooks" RuntimeError is
+                # the trigger that reaches us in practice. Every failure it
+                # detects *after* registering goes through
+                # _fail_action_before_start() and returns normally instead, so
+                # as of openjd-sessions 0.12.0 nothing raises post-registration
+                # and the else-branch below is defensive. It is kept because the
+                # cost of being wrong is asymmetric: if a future release does
+                # raise after registering, dropping the environment from our
+                # list would skip its onExit and desynchronize us from the
+                # session's LIFO exit-ordering check, masking the original error
+                # with "Must exit Environment X first". So: only when the session
+                # did NOT register the environment may we drop it from our
+                # entered list (cleanup must not try to exit it). If the session
+                # did register it, it must stay in our list so cleanup exits it —
                 # popping it here would skip its onExit and desynchronize us
                 # from the session's LIFO exit ordering check, masking the
                 # original error with "Must exit Environment X first".
@@ -325,7 +359,12 @@ class LocalSession:
             prev_action_failed = self.failed
             self._action_ended.clear()
             self._current_action = ExitEnvironmentAction(
-                session=self._openjd_session, id=env_id, keep_session_running=keep_session_running
+                session=self._openjd_session,
+                id=env_id,
+                keep_session_running=keep_session_running,
+                # The same table the enter used, so onExit resolves in the same
+                # scope as onEnter. `pop` because an environment is exited once.
+                resolved_symtab=self._entered_env_symtabs.pop(env_id, None),
             )
             self._current_action.run()
             self._action_ended.wait()
@@ -345,7 +384,11 @@ class LocalSession:
 
         self._action_ended.clear()
         self._current_action = RunTaskAction(
-            session=self._openjd_session, step=step, parameters=parameter_set
+            session=self._openjd_session,
+            step=step,
+            parameters=parameter_set,
+            # RFC 0005 §3.6: the step's resolved template-scope `let` values.
+            resolved_symtab=self._step_symbol_tables.get(step.name),
         )
         self._current_action.run()
         self._action_ended.wait()
@@ -436,17 +479,16 @@ class LocalSession:
         if task_parameters is None:
             task_parameters = StepParameterSpaceIterator(space=step.parameterSpace)
 
-        # Enter all the step environments. When the step defines step-level
-        # `let` bindings (RFC 0007), its environments are entered with them so
-        # their variables and actions can reference them.
-        # getattr guard: requires an openjd-model with Step.let on the
-        # instantiated Job (openjd-model PR #318+); collapse to plain
-        # `step.let` once the version pin floor guarantees it.
-        step_let_bindings = getattr(step, "let", None)
+        # Enter all the step environments with the step's create-time resolved
+        # symbol table, so a step-level `let` (RFC 0005 §3.6) is visible to
+        # their variables and actions. The source expressions are not
+        # re-evaluated anywhere downstream, so a missing table here means the
+        # step's `let` names are undefined rather than merely stale.
+        resolved_symtab = self._step_symbol_tables.get(step.name)
         self.run_environment_enters(
             step.stepEnvironments,
             EnvironmentType.STEP,
-            extra_let_bindings=step_let_bindings or None,
+            resolved_symtab=resolved_symtab,
             # RFC 0007 §7.3.1 (EXPR): Step.Name is available to a step's
             # environments (openjd-rs threads the step's resolved symbol
             # table into enter_environment; this is the CLI counterpart).

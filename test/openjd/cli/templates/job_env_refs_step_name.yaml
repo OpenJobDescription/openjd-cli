@@ -1,0 +1,19 @@
+specificationVersion: "jobtemplate-2023-09"
+extensions:
+  - EXPR
+name: JobEnvRefsStepName
+
+jobEnvironments:
+  - name: JobEnvRefsStep
+    script:
+      actions:
+        onEnter:
+          command: python
+          args: ["-c", "print('JobEnvSawStepName={{ Step.Name }}')"]
+steps:
+  - name: TheStep
+    script:
+      actions:
+        onRun:
+          command: python
+          args: ["-c", "print('TaskRan')"]

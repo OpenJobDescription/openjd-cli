@@ -5,7 +5,11 @@ extensions:
 parameterDefinitions:
   - name: Timeout
     type: INT
-    default: 5
+    # Generous relative to the ~1s the action needs: the point of the test is
+    # that the format string resolves into `timeout`, not that the timeout
+    # fires. A tight value made the action race its own budget under a loaded
+    # parallel test run and exit non-zero.
+    default: 20
 steps:
   - name: TimeoutStep
     script:
