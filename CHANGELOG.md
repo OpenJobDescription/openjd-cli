@@ -1,3 +1,12 @@
+## 0.7.7 (2026-09-02)
+
+
+
+### Bug Fixes
+* Forward the create-time step symbol table to openjd-sessions (#237) ([`bcd09b5`](https://github.com/OpenJobDescription/openjd-cli/commit/bcd09b5e1a2d7679c6b1d0b6281987bcf69cb46a))
+* Forward the create-time step symbol table to sessions ([`bcd09b5`](https://github.com/OpenJobDescription/openjd-cli/commit/bcd09b5e1a2d7679c6b1d0b6281987bcf69cb46a))
+
+
 ## 0.7.6 (2026-08-11)
 
 
