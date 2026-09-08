@@ -1,0 +1,40 @@
+specificationVersion: "jobtemplate-2023-09"
+name: Self Asserting Task
+description: >
+  An onRun action that spawns its own child process, reproduces that child's
+  output, and turns a comparison of it into the task's exit status. This is the
+  shape the openjd-specifications conformance suite uses for its single-task job
+  fixtures, so losing grandchild output or dropping the action's exit status
+  silently weakens that whole suite.
+
+parameterDefinitions:
+  - name: Printed
+    type: STRING
+    default: "EXPECTED_VALUE"
+
+steps:
+  - name: Assert
+    script:
+      actions:
+        onRun:
+          command: python
+          args: ["{{Task.File.Assert}}"]
+      embeddedFiles:
+        - name: Assert
+          type: TEXT
+          data: |
+            import subprocess
+            import sys
+
+            COMMAND = [sys.executable, "-c", "print(r'OUTPUT:{{Param.Printed}}')"]
+            EXPECTED = ["OUTPUT:EXPECTED_VALUE"]
+
+            completed = subprocess.run(COMMAND, capture_output=True, text=True)
+            sys.stdout.write(completed.stdout)
+            sys.stderr.write(completed.stderr)
+            output = completed.stdout + completed.stderr
+
+            missing = [line for line in EXPECTED if line not in output]
+            for _ in missing:
+                sys.stderr.write("ASSERT_FAILED: expected output line not found\n")
+            sys.exit(1 if missing else 0)
