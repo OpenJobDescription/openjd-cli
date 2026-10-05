@@ -40,7 +40,7 @@ dependencies = [
   # 0.11.4 is the first release exporting `create_job_with_symbol_tables` and
   # `JobWithSymbolTables`. 0.11.3 and below have `create_job` only, so the
   # step-scope resolved symbol tables cannot be obtained at all.
-  "openjd-model >= 0.11.4,< 0.12"
+  "openjd-model >= 0.11.4,< 0.13"
 ]
 
 [project.urls]
