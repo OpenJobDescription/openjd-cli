@@ -1,3 +1,11 @@
+## 0.8.0 (2026-10-08)
+
+
+### Features
+* Require openjd-model 0.13 and openjd-sessions 0.13 ([`77ae268`](https://github.com/OpenJobDescription/openjd-cli/commit/77ae2683bbfd76f5877a6635858c652a1f8597da))
+
+
+
 ## 0.7.7 (2026-09-02)
 
 
