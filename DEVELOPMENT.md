@@ -115,6 +115,34 @@ log_cli_level = 10
 ```
 3. Add logging statements to your tests as desired and run the test(s) that you are debugging.
 
+### Running the conformance suite
+
+The [openjd-specifications](https://github.com/OpenJobDescription/openjd-specifications) conformance
+suite checks this CLI's behaviour against the specification. It drives the installed `openjd`
+command, so it exercises the entry point rather than importing the package. CI runs it on Linux,
+macOS and Windows via `.github/workflows/conformance.yml`.
+
+To run it locally you need a checkout of `openjd-specifications`, [uv](https://docs.astral.sh/uv/),
+and `openjd` on `PATH`. `hatch shell` provides the latter:
+
+```bash
+hatch shell
+cd /path/to/openjd-specifications/conformance-tests
+uv run run_openjd_cli_tests.py '2023-09/*'          # the whole suite
+uv run run_openjd_cli_tests.py '2023-09/base/jobs'  # one directory
+uv run run_openjd_cli_tests.py '2023-09/base/jobs/1.1--basic-job-creation.test.yaml'
+```
+
+The job fixtures run `command: python`, so `python` — not just `python3` — has to resolve on
+`PATH`. A virtualenv or `hatch shell` satisfies this; a bare system Python on Ubuntu does not.
+
+Two failure shapes are worth telling apart. A template test failing means `openjd check` accepted
+something it should have rejected, or vice versa. A job test failing means `openjd run` produced the
+wrong output, or exited non-zero when the fixture expected a clean run — many of the single-task job
+fixtures assert their own output from inside the task and signal a mismatch through the task's exit
+status, so a non-zero exit with `OPENJD_CONFORMANCE_ASSERT_FAILED` in the log is an output mismatch,
+not a crash.
+
 ## Things to Know
 
 ### The Package's Public Interface
