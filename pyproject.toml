@@ -32,7 +32,7 @@ dependencies = [
   # 0.13 is the floor for both so that this package uses the latest
   # openjd-sessions and openjd-model releases.
   "openjd-sessions >= 0.13,< 0.14",
-  "openjd-model >= 0.13,< 0.14"
+  "openjd-model >= 0.13,< 0.15"
 ]
 
 [project.urls]
