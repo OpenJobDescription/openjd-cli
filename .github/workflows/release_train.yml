@@ -55,6 +55,8 @@ jobs:
       dispatch_repos: "aws-deadline/deadline-cloud-worker-agent"
     secrets:
       role_arn: ${{ secrets.RELEASE_TRAIN_ROLE }}
-      # The release workflows' token, used only by the dispatch step to run release_train.yml in
-      # dispatch_repos. Optional: without it those repositories' daily run picks a release up.
-      dispatch_token: ${{ secrets.CI_TOKEN }}
+      # Bot-owned, Actions-only dispatch tokens, one per organization, used only by the dispatch step to run
+      # release_train.yml in dispatch_repos. Optional: without an organization's token its repositories pick a
+      # release up on their daily run.
+      dispatch_token_openjd: ${{ secrets.RELEASE_TRAIN_DISPATCH_TOKEN }}
+      dispatch_token_aws_deadline: ${{ secrets.RELEASE_TRAIN_DISPATCH_TOKEN_AWS_DEADLINE }}
